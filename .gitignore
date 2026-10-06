@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Secrets (Databento API key is read from the environment, never committed)
+.env
+*.key
+
+# Vendor data is cached locally and not committed
+data/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
