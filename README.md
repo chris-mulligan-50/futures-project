@@ -80,8 +80,23 @@ and statistical approach before examining the historical test results.
    window, examine whether the spread moves back toward its earlier
    level before expiry. Report the available observation horizon.
 
-Finalize the window rule, snapshot time, quote-age limit, and missing-data
-policy before examining spread results in the historical test sample.
+### Open Decisions
+
+These questions, first raised in Gonzalo's draft (#1), will be settled
+in a method decision Issue. Each team member signs off there before
+the main test is run.
+
+- **Roll window rule.** A fixed calendar rule known in advance
+  (proposed above) or the days around the observed volume crossover?
+  Proposed: the fixed rule is the main test; the crossover is
+  reported descriptively.
+- **Number of control windows.** One control week per roll, or
+  several earlier weeks to give a distribution of normal moves?
+- **Carry and policy controls.** Flag or exclude windows containing
+  Fed or ECB decisions (step 5), or also compare the spread with the
+  level implied by the USD–EUR interest-rate differential?
+- **Remaining parameters.** Snapshot time, quote-age limit,
+  missing-data policy, and confidence-interval procedure.
 
 ## Deliverables and Limitations
 
