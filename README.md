@@ -75,7 +75,7 @@ We will use Databento `GLBX.MDP3` data for individual quarterly 6E contracts:
 - API keys and raw vendor data are never committed.
   See [docs/DATABENTO_REFERENCE.md](docs/DATABENTO_REFERENCE.md).
 
-## Proposed Method — Pending Team Approval
+## Proposed Method 
 
 The team will finalize the window definitions, observation time,
 quote-quality rules, and statistical approach before examining the
