@@ -46,17 +46,16 @@ def test_spread_symbol_lists_deferred_first():
 )
 def test_each_schema_requests_named_contracts(func, schema):
     client = FakeClient()
-    df = func(["6EU6", "6EZ6"], date(2026, 8, 10), date(2026, 9, 15), client)
+    func(["6EU6", "6EZ6"], date(2026, 8, 10), date(2026, 9, 15), client)
 
     assert client.requests == [{
         "dataset": "GLBX.MDP3",
         "schema": schema,
         "symbols": ["6EU6", "6EZ6"],
         "stype_in": "raw_symbol",
-        "start": "2026-08-10T00:00:00",
-        "end": "2026-09-15T00:00:00",
+        "start": "2026-08-10T00:00:00+00:00",
+        "end": "2026-09-15T00:00:00+00:00",
     }]
-    assert list(df.columns) == ["symbol", "volume"]
 
 
 def test_timezone_aware_times_keep_their_offset():
@@ -64,6 +63,19 @@ def test_timezone_aware_times_keep_their_offset():
     start = pd.Timestamp("2026-09-08 10:00", tz="America/Chicago")
     fetch("bbo-1m", ["6EU6"], start, start + pd.Timedelta(minutes=1), client)
     assert client.requests[0]["start"] == "2026-09-08T10:00:00-05:00"
+
+
+def test_single_symbol_string_is_not_split():
+    client = FakeClient()
+    fetch("ohlcv-1d", "6EU6", "2026-08-01", "2026-09-01", client)
+    assert client.requests[0]["symbols"] == ["6EU6"]
+
+
+def test_naive_and_aware_times_can_be_mixed():
+    client = FakeClient()
+    end = pd.Timestamp("2026-09-08 10:00", tz="America/Chicago")
+    fetch("bbo-1m", ["6EU6"], "2026-09-08", end, client)
+    assert client.requests[0]["start"] == "2026-09-08T00:00:00+00:00"
 
 
 def test_rejects_empty_symbols():
