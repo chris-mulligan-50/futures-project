@@ -26,7 +26,8 @@ DateLike = Union[str, date, pd.Timestamp]
 def spread_symbol(front: str, deferred: str) -> str:
     """Raw symbol of the listed calendar spread, e.g. ``6EZ6-6EU6``.
 
-    CME lists the deferred leg first (checked against Databento definitions).
+    CME lists the deferred leg first: Databento's definitions include
+    ``6EZ6-6EU6``, and ``6EU6-6EZ6`` does not resolve.
     The spread's price sign is not checked yet; read ``leg_side`` in the
     definition data before using spread prices.
     """
@@ -72,7 +73,7 @@ def fetch(
     end: DateLike,
     client: Optional[db.Historical] = None,
 ) -> pd.DataFrame:
-    """Records for ``symbols`` in ``schema`` from ``start`` up to, not including, ``end``."""
+    """Records for ``symbols`` in ``schema`` from ``start`` to ``end`` (exclusive)."""
     params = request_params(schema, symbols, start, end)
     return (client or get_client()).timeseries.get_range(**params).to_df()
 
