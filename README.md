@@ -188,6 +188,10 @@ Set your Databento key in the environment; never commit it:
 export DATABENTO_API_KEY="your-key"      # Windows PowerShell: $env:DATABENTO_API_KEY="your-key"
 ```
 
+Data fetched through `euro_roll.download` is cached under `data/databento/`
+(git-ignored), so repeating a request reads from disk and is not billed
+again. Delete a file there to download it fresh.
+
 Open `notebooks/roll_volume_exploration.ipynb` in VS Code or Jupyter,
 select this environment, and run the cells in order. Review the
 estimated cost before downloading.
