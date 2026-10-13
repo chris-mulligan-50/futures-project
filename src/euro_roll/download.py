@@ -6,7 +6,9 @@ Requests use raw symbols such as ``6EU6`` or the listed spread
 them for the dates requested, so keep each request inside the contract's
 own life. Naive start/end times are read as UTC; end is exclusive.
 
-Caching (#26) and cost previews (#27) are separate.
+Results are cached on disk by default (see ``euro_roll.cache``), so
+repeating a request does not download or bill it again. Cost previews
+(#27) are separate.
 """
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ from typing import Iterable, Optional, Union
 import databento as db
 import pandas as pd
 
+from euro_roll import cache as _cache
 from euro_roll.client import get_client
 
 DATASET = "GLBX.MDP3"
@@ -72,10 +75,20 @@ def fetch(
     start: DateLike,
     end: DateLike,
     client: Optional[db.Historical] = None,
+    cache: bool = True,
 ) -> pd.DataFrame:
-    """Records for ``symbols`` in ``schema`` from ``start`` to ``end`` (exclusive)."""
+    """Records for ``symbols`` in ``schema`` from ``start`` to ``end`` (exclusive).
+
+    With ``cache`` on, a repeated request is read from disk and needs no
+    client or API key. Set ``cache=False`` to always download.
+    """
     params = request_params(schema, symbols, start, end)
-    return (client or get_client()).timeseries.get_range(**params).to_df()
+
+    def download() -> db.DBNStore:
+        return (client or get_client()).timeseries.get_range(**params)
+
+    store = _cache.load_or_download(params, download) if cache else download()
+    return store.to_df()
 
 
 def fetch_daily_bars(
@@ -83,9 +96,10 @@ def fetch_daily_bars(
     start: DateLike,
     end: DateLike,
     client: Optional[db.Historical] = None,
+    cache: bool = True,
 ) -> pd.DataFrame:
     """Daily OHLCV bars (UTC days), for volume migration."""
-    return fetch("ohlcv-1d", symbols, start, end, client)
+    return fetch("ohlcv-1d", symbols, start, end, client, cache)
 
 
 def fetch_bbo_1m(
@@ -93,9 +107,10 @@ def fetch_bbo_1m(
     start: DateLike,
     end: DateLike,
     client: Optional[db.Historical] = None,
+    cache: bool = True,
 ) -> pd.DataFrame:
     """Best bid and offer sampled each minute, for fixed-time snapshots."""
-    return fetch("bbo-1m", symbols, start, end, client)
+    return fetch("bbo-1m", symbols, start, end, client, cache)
 
 
 def fetch_definitions(
@@ -103,6 +118,7 @@ def fetch_definitions(
     start: DateLike,
     end: DateLike,
     client: Optional[db.Historical] = None,
+    cache: bool = True,
 ) -> pd.DataFrame:
     """Instrument definitions, including expiration, for the roll calendar."""
-    return fetch("definition", symbols, start, end, client)
+    return fetch("definition", symbols, start, end, client, cache)
