@@ -2,10 +2,12 @@ import sys
 from datetime import date
 from pathlib import Path
 
+import databento as db
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from euro_roll import coverage  # noqa: E402
 from euro_roll.coverage import compare_expiries, fetch_expirations  # noqa: E402
 
 PAIRS = [
@@ -22,32 +24,30 @@ def test_compare_expiries_flags_mismatch():
     ]
 
 
-class FakeClient:
-    """Records each request and returns a fixed expiration."""
+def stub_definitions(monkeypatch, failures=0):
+    """Replace ``fetch_definitions`` so no client, network or cache is used.
 
-    def __init__(self):
-        self.requests = []
-        self.timeseries = self
+    Returns the list of recorded (symbols, start, end) calls. The first
+    ``failures`` calls raise a server error.
+    """
+    calls = []
 
-    def get_range(self, **kwargs):
-        self.requests.append(kwargs)
-        return self
-
-    def to_df(self):
+    def fake(symbols, start, end, client=None):
+        calls.append((symbols, start, end))
+        if len(calls) <= failures:
+            raise db.BentoServerError.__new__(db.BentoServerError)
         return pd.DataFrame(
             {"expiration": [pd.Timestamp("2026-03-16 14:16", tz="UTC")]}
         )
 
+    monkeypatch.setattr(coverage, "fetch_definitions", fake)
+    return calls
 
-def test_fetch_expirations_requests_one_day_before_expiry():
-    client = FakeClient()
-    actual = fetch_expirations(client, PAIRS[:1])
-    assert actual == [date(2026, 3, 16)]
-    req = client.requests[0]
-    assert req["schema"] == "definition"
-    assert req["symbols"] == ["6EH6"]
-    assert req["start"] == "2026-03-06T00:00:00+00:00"
-    assert req["end"] == "2026-03-07T00:00:00+00:00"
+
+def test_fetch_expirations_requests_one_day_before_expiry(monkeypatch):
+    calls = stub_definitions(monkeypatch)
+    assert fetch_expirations(None, PAIRS[:1]) == [date(2026, 3, 16)]
+    assert calls == [(["6EH6"], date(2026, 3, 6), date(2026, 3, 7))]
 
 
 def test_known_holiday_expiry_6EM3():
@@ -62,19 +62,10 @@ def test_known_holiday_expiry_6EM3():
     assert row[3] is False
 
 
-def test_fetch_expirations_retries_transient_server_error():
-    import databento as db
-
-    class Flaky(FakeClient):
-        def get_range(self, **kwargs):
-            self.requests.append(kwargs)
-            if len(self.requests) == 1:
-                raise db.BentoServerError.__new__(db.BentoServerError)
-            return self
-
-    client = Flaky()
-    assert fetch_expirations(client, PAIRS[:1]) == [date(2026, 3, 16)]
-    assert len(client.requests) == 2
+def test_fetch_expirations_retries_transient_server_error(monkeypatch):
+    calls = stub_definitions(monkeypatch, failures=1)
+    assert fetch_expirations(None, PAIRS[:1]) == [date(2026, 3, 16)]
+    assert len(calls) == 2
 
 
 def test_same_raw_symbol_in_different_decades_is_not_merged():
