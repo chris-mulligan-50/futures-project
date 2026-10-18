@@ -204,6 +204,18 @@ python -m euro_roll download --start 2010-01-01 --end 2026-09-30
 python -m euro_roll analyze              # writes outputs/
 ```
 
+### Running the tests
+
+```bash
+python -m pytest
+```
+
+The tests need no API key or network: Databento is replaced by fakes, and
+`tests/synthetic.py` provides fake 6E quotes and daily bars (contents are
+documented at the top of that file, and available to any test through the
+fixtures in `tests/conftest.py`). GitHub Actions runs the same command on
+every pull request, on Linux and Windows.
+
 ### Planned repository layout
 
 ```
