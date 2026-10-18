@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from euro_roll import download  # noqa: E402
+from euro_roll import cache, download  # noqa: E402
 from euro_roll.download import (  # noqa: E402
     fetch,
     fetch_bbo_1m,
@@ -15,21 +15,14 @@ from euro_roll.download import (  # noqa: E402
     fetch_definitions,
     spread_symbol,
 )
+from fakes import FakeClient  # noqa: E402
 
 
-class FakeClient:
-    """Stands in for databento.Historical; records each request."""
-
-    def __init__(self):
-        self.requests = []
-        self.timeseries = self
-
-    def get_range(self, **kwargs):
-        self.requests.append(kwargs)
-        return self
-
-    def to_df(self):
-        return pd.DataFrame({"symbol": ["6EU6"], "volume": [100]})
+@pytest.fixture(autouse=True)
+def cache_dir(monkeypatch, tmp_path):
+    """Keep every test's cache in a temporary folder, never in data/."""
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
+    return tmp_path
 
 
 def test_spread_symbol_lists_deferred_first():
@@ -93,3 +86,38 @@ def test_uses_shared_client_when_none_given(monkeypatch):
     monkeypatch.setattr(download, "get_client", lambda: client)
     fetch_daily_bars(["6EU6"], "2026-08-01", "2026-09-01")
     assert len(client.requests) == 1
+
+
+def test_repeated_request_is_read_from_cache():
+    client = FakeClient(volume=100)
+    first = fetch_daily_bars(["6EU6"], "2026-08-10", "2026-08-11", client)
+    second = fetch_daily_bars(["6EU6"], "2026-08-10", "2026-08-11", client)
+    assert len(client.requests) == 1
+    assert second["volume"].tolist() == first["volume"].tolist() == [100]
+
+
+def test_cache_hit_needs_no_client_or_key(monkeypatch):
+    fetch_daily_bars(["6EU6"], "2026-08-10", "2026-08-11", FakeClient())
+
+    def no_client():
+        raise AssertionError("a cache hit must not create a client")
+
+    monkeypatch.setattr(download, "get_client", no_client)
+    df = fetch_daily_bars(["6EU6"], "2026-08-10", "2026-08-11")
+    assert df["volume"].tolist() == [100]
+
+
+def test_different_request_is_downloaded():
+    client = FakeClient()
+    fetch_daily_bars(["6EU6"], "2026-08-10", "2026-08-11", client)
+    fetch_bbo_1m(["6EU6"], "2026-08-10", "2026-08-11", client)
+    fetch_daily_bars(["6EU6"], "2026-08-10", "2026-08-12", client)
+    assert len(client.requests) == 3
+
+
+def test_cache_false_always_downloads(cache_dir):
+    client = FakeClient()
+    for _ in range(2):
+        fetch_daily_bars(["6EU6"], "2026-08-10", "2026-08-11", client, cache=False)
+    assert len(client.requests) == 2
+    assert not any(cache_dir.rglob("*.dbn"))
