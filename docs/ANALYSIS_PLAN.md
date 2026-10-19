@@ -69,7 +69,7 @@ Comment in #12 to sign off; tick here once done.
 
 - [ ] Chris Mulligan
 - [ ] Sidharth Saha
-- [ ] Shreya Enaganti
+- [x] Shreya Enaganti
 - [ ] Gonzalo Romero
 
 ## Deviation log
