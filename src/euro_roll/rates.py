@@ -1,33 +1,28 @@
 """Daily USD and EUR short-term rates (Task 42, issue #48).
 
-Used for the carry comparison in ``docs/ANALYSIS_PLAN.md`` (decision 8):
-the 6E calendar spread spans three months, so both sides are 3-month
-government rates.
+Used for the carry comparison in ``docs/ANALYSIS_PLAN.md`` (decision 8).
+The 6E calendar spread spans three months, so both sides are 3-month
+government rates, from free sources that need no API key:
 
-Sources (free, no API key):
-  * USD: 3-month Treasury bill, secondary market, FRED ``DTB3``. Quoted as a
-    bank-discount yield (360-day year), in percent.
+  * USD: 3-month Treasury bill, FRED ``DTB3``. A bank-discount yield
+    (360-day year), converted here as a 91-day bill.
   * EUR: euro area AAA government yield curve, 3-month spot rate, ECB Data
-    Portal ``YC/B.U2.EUR.4F.G_N_A.SV_C_YM.SR_3M``. Svensson model,
-    continuously compounded, percent per year.
+    Portal ``YC/B.U2.EUR.4F.G_N_A.SV_C_YM.SR_3M``. Already continuously
+    compounded.
 
-Both are converted to the same basis: continuously compounded, percent per
-year. The T-bill is treated as a 91-day bill. Government rates sit a little
-below the rates FX dealers fund at, so the level of the gap need not match
-the futures' implied carry; weekly changes are what the plan compares.
+Both end up continuously compounded, in percent per year. Government rates
+sit a little below the rates FX dealers fund at, so the level of the gap
+need not match the futures' implied carry; the plan compares weekly changes.
 
-Timing: both are end-of-day values, so the value for a day is measured a few
-hours after the 10:00 Chicago spread snapshot. Days without a value (US or
-TARGET holidays, e.g. FRED leaves 2010-12-24 empty) use each leg's latest
-earlier value, and ``rates_on`` reports which date was used.
+Both are end-of-day values, so a day's value is measured a few hours after
+the 10:00 Chicago spread snapshot. On a US or TARGET holiday each leg uses
+its latest earlier value, and ``rates_on`` reports which date that was.
 
-The download is cached under the git-ignored ``data/rates/`` folder. Delete
-the file, or pass ``refresh=True``, to rebuild it. From the command line:
-``python -m euro_roll.rates``.
+The download is cached under the git-ignored ``data/rates/`` folder.
+Rebuild it with ``python -m euro_roll.rates``.
 """
 from __future__ import annotations
 
-import math
 import os
 from datetime import date
 from pathlib import Path
@@ -53,58 +48,42 @@ DateLike = Union[str, date, pd.Timestamp]
 PathLike = Union[str, Path]
 
 
-def parse_fred(source) -> pd.Series:
-    """FRED CSV (``observation_date,DTB3``) as a Series in percent, holidays dropped."""
-    df = pd.read_csv(source)
-    values = pd.to_numeric(df["DTB3"], errors="coerce")  # holidays are empty or "."
-    s = pd.Series(values.to_numpy(), index=pd.to_datetime(df["observation_date"]))
-    return s.dropna().rename("usd_discount").rename_axis("date")
-
-
-def parse_ecb(source) -> pd.Series:
-    """ECB Data Portal CSV (``format=csvdata``) as a Series in percent."""
-    df = pd.read_csv(source, usecols=["TIME_PERIOD", "OBS_VALUE"])
-    s = pd.Series(
-        pd.to_numeric(df["OBS_VALUE"], errors="coerce").to_numpy(),
-        index=pd.to_datetime(df["TIME_PERIOD"]),
-    )
-    return s.dropna().sort_index().rename("eur").rename_axis("date")
+def read_series(source, date_col: str, value_col: str) -> pd.Series:
+    """One rate series from a CSV, in percent, with empty or ``.`` values dropped."""
+    df = pd.read_csv(source, usecols=[date_col, value_col])
+    values = pd.to_numeric(df[value_col], errors="coerce").to_numpy()
+    series = pd.Series(values, index=pd.to_datetime(df[date_col]).rename("date"))
+    return series.dropna().sort_index()
 
 
 def discount_to_continuous(discount_pct, days: int = TBILL_DAYS):
-    """Bank-discount yield (percent, 360-day) to a continuously compounded rate (percent, 365-day).
+    """Bank-discount yield to a continuously compounded rate, both in percent.
 
-    Price per 1 of face value is ``1 - d * days / 360``; the continuous rate
-    is ``-ln(price) * 365 / days``.
+    The bill's price per 1 of face value is ``1 - d * days / 360``.
     """
-    price = 1 - np.asarray(discount_pct, dtype=float) / 100 * days / 360
-    rate = -np.log(price) * 365 / days * 100
-    if isinstance(discount_pct, pd.Series):
-        return pd.Series(rate, index=discount_pct.index, name=discount_pct.name)
-    return float(rate) if np.ndim(rate) == 0 else rate
+    price = 1 - discount_pct / 100 * days / 360
+    return -np.log(price) * 365 / days * 100
 
 
 def build_rates(usd_discount: pd.Series, eur: pd.Series) -> pd.DataFrame:
-    """One table of ``usd`` and ``eur``, continuously compounded percent.
+    """``usd`` and ``eur`` columns on the union of both calendars.
 
-    Rows are the union of both calendars, so a holiday on one side leaves
-    that side NaN rather than dropping the other side's value.
+    A holiday on one side leaves that side NaN instead of dropping the row.
     """
-    usd = discount_to_continuous(usd_discount).rename("usd")
-    return pd.concat([usd, eur.rename("eur")], axis=1, sort=True).rename_axis("date")
+    usd = discount_to_continuous(usd_discount)
+    return pd.concat({"usd": usd, "eur": eur}, axis=1, sort=True).rename_axis("date")
 
 
 def download_rates(start: str = START) -> pd.DataFrame:
-    """Fetch both series from FRED and the ECB (no API key needed)."""
-    usd = parse_fred(FRED_URL.format(start=start))
-    eur = parse_ecb(ECB_URL.format(start=start))
+    usd = read_series(FRED_URL.format(start=start), "observation_date", "DTB3")
+    eur = read_series(ECB_URL.format(start=start), "TIME_PERIOD", "OBS_VALUE")
     return build_rates(usd, eur)
 
 
 def load_rates(
     path: Optional[PathLike] = None, refresh: bool = False, start: str = START
 ) -> pd.DataFrame:
-    """Cached rates table, downloading it on the first call or when ``refresh``.
+    """Cached rates, downloading on the first call or when ``refresh``.
 
     Written under a temporary name and renamed when complete, as in
     ``euro_roll.cache``, so an interrupted write never looks valid.
@@ -124,34 +103,23 @@ def load_rates(
     return rates
 
 
-def _as_of(series: pd.Series, days: pd.DatetimeIndex, max_age_days: int):
-    """Latest value on or before each day, and the date it came from."""
-    s = series.dropna().sort_index()
-    pos = s.index.searchsorted(days, side="right") - 1
-    found = pos >= 0
-    values = np.full(len(days), np.nan)
-    source = pd.Series(pd.NaT, index=days, dtype="datetime64[ns]")
-    values[found] = s.to_numpy()[pos[found]]
-    source[found] = s.index[pos[found]]
-    too_old = (days - pd.DatetimeIndex(source)).days > max_age_days
-    values[too_old] = np.nan
-    source[too_old] = pd.NaT
-    return values, source.to_numpy()
-
-
 def rates_on(
     rates: pd.DataFrame, days: Iterable[DateLike], max_age_days: int = MAX_AGE_DAYS
 ) -> pd.DataFrame:
-    """Rates aligned to ``days``, with ``gap = usd - eur`` in percent.
+    """Rates on each of ``days``, with ``gap = usd - eur`` in percent.
 
-    Each leg uses its latest value on or before the day; ``usd_date`` and
-    ``eur_date`` say which date that was. A leg whose latest value is more
-    than ``max_age_days`` old is NaN, and so is the gap.
+    Each leg takes its latest value on or before the day; ``usd_date`` and
+    ``eur_date`` say which date that was. A value more than ``max_age_days``
+    old counts as missing.
     """
-    index = pd.DatetimeIndex(pd.to_datetime(list(days))).normalize()
-    out = pd.DataFrame(index=index.rename("day"))
+    index = pd.DatetimeIndex(pd.to_datetime(list(days))).normalize().rename("day")
+    out = pd.DataFrame(index=index)
     for leg in ("usd", "eur"):
-        out[leg], out[f"{leg}_date"] = _as_of(rates[leg], index, max_age_days)
+        observed = rates[leg].dropna()
+        source = pd.Series(observed.index, index=observed.index).asof(index)
+        fresh = (index - pd.DatetimeIndex(source)) <= pd.Timedelta(days=max_age_days)
+        out[leg] = observed.asof(index).where(fresh).to_numpy()
+        out[f"{leg}_date"] = source.where(fresh).to_numpy()
     out["gap"] = out["usd"] - out["eur"]
     return out[["usd", "eur", "gap", "usd_date", "eur_date"]]
 
@@ -161,7 +129,7 @@ def rate_gap(
 ) -> float:
     """USD minus EUR 3-month rate on ``day``, continuously compounded percent."""
     gap = rates_on(rates, [day], max_age_days)["gap"].iloc[0]
-    if math.isnan(gap):
+    if pd.isna(gap):
         raise ValueError(f"No rate within {max_age_days} days on or before {day}")
     return float(gap)
 

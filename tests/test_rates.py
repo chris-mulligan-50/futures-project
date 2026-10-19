@@ -9,10 +9,9 @@ from euro_roll.rates import (
     build_rates,
     discount_to_continuous,
     load_rates,
-    parse_ecb,
-    parse_fred,
     rate_gap,
     rates_on,
+    read_series,
 )
 
 # Shaped like the real downloads: FRED leaves holidays empty (2010-12-24),
@@ -33,19 +32,27 @@ YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_3M,B,2010-12-29,0.53,A
 """
 
 
+def fred():
+    return read_series(io.StringIO(FRED_CSV), "observation_date", "DTB3")
+
+
+def ecb():
+    return read_series(io.StringIO(ECB_CSV), "TIME_PERIOD", "OBS_VALUE")
+
+
 @pytest.fixture
 def table():
-    return build_rates(parse_fred(io.StringIO(FRED_CSV)), parse_ecb(io.StringIO(ECB_CSV)))
+    return build_rates(fred(), ecb())
 
 
-def test_parse_fred_drops_holidays():
-    s = parse_fred(io.StringIO(FRED_CSV))
+def test_read_series_drops_holidays():
+    s = fred()
     assert list(s.index.strftime("%Y-%m-%d")) == ["2010-12-23", "2010-12-27", "2010-12-29"]
     assert s.iloc[0] == 0.14
 
 
-def test_parse_ecb_reads_values():
-    s = parse_ecb(io.StringIO(ECB_CSV))
+def test_read_series_ignores_other_columns():
+    s = ecb()
     assert len(s) == 4
     assert s["2010-12-28"] == 0.52
 
