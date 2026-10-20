@@ -54,13 +54,13 @@ def test_known_holiday_expiry_6EM3():
     # Databento: 6EM3 expired Fri 2023-06-16, not Mon 06-19 (Juneteenth).
     from euro_roll.expiries import expiry_date
 
-    assert expiry_date(2023, 6) == date(2023, 6, 19)
+    assert expiry_date(2023, 6, holidays=set()) == date(2023, 6, 19)  # bare formula
     assert expiry_date(2023, 6, holidays={date(2023, 6, 19)}) == date(2023, 6, 16)
+    assert expiry_date(2023, 6) == date(2023, 6, 16)  # default now includes Juneteenth
     row = compare_expiries(
         [("6EM3", "6EU3", date(2023, 6, 19))], [date(2023, 6, 16)]
     )[0]
     assert row[3] is False
-
 
 def test_fetch_expirations_retries_transient_server_error(monkeypatch):
     calls = stub_definitions(monkeypatch, failures=1)
