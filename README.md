@@ -41,7 +41,8 @@ Stated before the full test is run.
 
 A quick check of the last eight quarterly rolls (December 2024 through
 September 2026) found the spread rose in all eight roll weeks, while in
-comparable normal weeks it moved both ways. We treat this as motivation:
+comparable normal weeks it moved both ways. This check has not yet been
+reproduced in the pipeline. We treat it as motivation:
 
 1. The idea came from looking at these same rolls, so they cannot also
    serve as the test. The main test will use earlier rolls (Databento
@@ -107,12 +108,9 @@ Issue.
    across rolls before choosing the interval procedure. We do not count
    minute rows as independent tests.
 6. **Check sensitivity.** Repeat with alternative window lengths and
-   offsets, with the listed spread's quotes versus legged outrights, and
+   offsets, and
    excluding pairs where either window contains a scheduled Fed or ECB
    policy decision.
-7. **Check reversal.** Where usable quotes remain after the roll window,
-   examine whether the spread moves back toward its earlier level before
-   expiry. Report the available observation horizon.
 
 ### Open Decisions
 
@@ -120,9 +118,11 @@ To be settled in the method decision Issue before the main test runs.
 
 - **Number of control windows.** One control week per roll (proposed),
   or several earlier weeks to give a distribution of normal moves.
-- **Carry and policy controls.** Flag or exclude windows containing Fed
-  or ECB decisions (proposed, step 6), or also compare the spread with the
-  level implied by the USD–EUR rate differential.
+- **Carry and policy controls.** First tabulate how often Fed or ECB
+  decisions fall in roll and control windows. Then flag or exclude those
+  windows (proposed, step 6), and compare the spread with the simple
+  carry-implied level, using observed USD and EUR short rates rather than
+  assuming rate regimes are shared.
 - **Remaining parameters.** Snapshot time, quote-age limit, missing-data
   policy, and confidence-interval procedure.
 
@@ -139,9 +139,11 @@ We will produce:
 **In scope:** one market (Euro FX, 6E), quarterly rolls, the pipeline,
 and the report.
 
-**Extensions if time allows:** CFTC positioning, a detailed
-interest-rate model, a trading strategy that front-runs the roll, other
-currencies (6J, 6B), and tick-level order-book analysis.
+**Out of scope for now (reopen only if the main pipeline finishes early):**
+CFTC positioning, other currencies (6J, 6B), a trading strategy that
+front-runs the roll, a reversal check before expiry, and a detailed
+interest-rate model. Only the simple carry formula with observed rates is
+in scope.
 
 **Limitations.** Spread changes also reflect interest-rate expectations
 and other market conditions. The analysis can identify patterns
@@ -150,24 +152,28 @@ funds or prove that rolling caused those movements.
 
 ## Task Roadmap
 
-Each task will be tracked as a GitHub Issue with an owner, dependencies,
-and completion criteria. Issue numbers will be added here once opened.
+Each task is tracked as a GitHub Issue with an owner, dependencies, and
+completion criteria. After the professor's check-in the list was cut to
+what fits the remaining time; closed issues say where their content went.
 
-| # | Task | Depends on |
+| Task | Issue | Depends on |
 |---|---|---|
-| 1 | Repo setup: package skeleton, `.gitignore`, API-key handling | — |
-| 2 | Verify data coverage, cost, contract pairs, and expiry dates | — |
-| 3 | Data download and cache: daily bars, minute BBO, definitions, sample mode | 1, 2 |
-| 4 | Roll calendar: expiries per quarter, front/deferred volume-share table and chart | 3 |
-| 5 | Spread construction: fixed-time snapshots, deferred minus front in ticks, data-quality checks | 3 |
-| 6 | Method decision: settle Open Decisions above; team sign-off | — |
-| 7 | Window selection: roll and control windows under the agreed rule, with tests | 4, 6 |
-| 8 | Statistics: paired roll-vs-control comparison, held-out and recent rolls reported separately | 5, 7 |
-| 9 | Robustness: alternative windows, central-bank exclusions, reversal check | 8 |
-| 10 | Carry and central-bank controls: Fed and ECB calendar, optional rate-implied spread | 6 |
-| 11 | Optional CFTC positioning aligned to publication date | 8 |
-| 12 | Reproduce the preliminary eight-roll check in the pipeline and commit its script | 5 |
-| 13 | Figures, tables, and final report | 8, 9 |
+| Roll calendar: expiries per quarter, holiday handling, volume-share table and chart | #10 | — |
+| Spread construction: fixed-time snapshots, deferred minus front in ticks | #11 | — |
+| Method decision: open decisions, analysis plan, held-out split; team sign-off | #12 | — |
+| Fed/ECB calendar, overlap table, and simple carry formula | #16 | #48 |
+| Statistics: sign and Wilcoxon tests | #28 | #10, #11 |
+| Statistics: bootstrap CI, rates as a control | #29 | #28, #48 |
+| Robustness: alternative window lengths and offsets | #30 | #28 |
+| Control-window liquidity check | #47 | #10, #11 |
+| USD and EUR short-rate data | #48 | — |
+| Data-quality log: flagged and dropped observations | #24 | #11 |
+| Sample mode and cost preview before download | #27 | — |
+| CLI: `download` and `analyze` | #21 | — |
+| Figures, tables, and final report | #19 | #28, #29, #30 |
+
+Done: repo setup, data coverage and cost check, downloader, cache, window
+selection, test fixtures and CI.
 
 ## How to Run
 
@@ -187,6 +193,10 @@ Set your Databento key in the environment; never commit it:
 ```bash
 export DATABENTO_API_KEY="your-key"      # Windows PowerShell: $env:DATABENTO_API_KEY="your-key"
 ```
+
+Data fetched through `euro_roll.download` is cached under `data/databento/`
+(git-ignored), so repeating a request reads from disk and is not billed
+again. Delete a file there to download it fresh.
 
 Open `notebooks/roll_volume_exploration.ipynb` in VS Code or Jupyter,
 select this environment, and run the cells in order. Review the
