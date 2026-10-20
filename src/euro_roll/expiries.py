@@ -5,8 +5,8 @@ business days before the third Wednesday of its contract month (March,
 June, September, December).
 
 This is the formula version. It does not read Databento definitions, so
-it needs no API key. Check its dates against Databento definition data
-when available, and pass known exchange holidays via ``holidays``.
+it needs no API key. By default it skips the CME holidays in
+``CME_HOLIDAYS``; pass ``holidays`` to override them (``set()`` for none).
 """
 from __future__ import annotations
 
@@ -18,6 +18,19 @@ MONTH_CODES = {3: "H", 6: "M", 9: "U", 12: "Z"}
 PRODUCT = "6E"
 
 RollPair = Tuple[str, str, date]  # (front, deferred, expiry)
+
+# CME holidays that can fall within two business days before a third
+# Wednesday of March, June, September or December. Juneteenth (observed
+# from 2022) is the only one that can: the other CME holidays land outside
+# the 15th-21st window. Today it changes one expiry, 6EM3: the formula gave
+# Mon 2023-06-19, but the contract expired Fri 2023-06-16.
+CME_HOLIDAYS: Set[date] = {
+    date(2022, 6, 20),  # Juneteenth observed (June 19 was a Sunday)
+    date(2023, 6, 19),
+    date(2024, 6, 19),
+    date(2025, 6, 19),
+    date(2026, 6, 19),
+}
 
 
 def third_wednesday(year: int, month: int) -> date:
@@ -41,7 +54,12 @@ def business_days_before(
 def expiry_date(
     year: int, month: int, holidays: Optional[Set[date]] = None
 ) -> date:
-    """Last trading day of the 6E contract for ``month`` of ``year``."""
+    """Last trading day of the 6E contract for ``month`` of ``year``.
+
+    ``holidays=None`` uses ``CME_HOLIDAYS``; pass ``set()`` to ignore holidays.
+    """
+    if holidays is None:
+        holidays = CME_HOLIDAYS
     return business_days_before(third_wednesday(year, month), 2, holidays)
 
 
@@ -56,8 +74,11 @@ def roll_calendar(
     """(front, deferred, expiry) for each quarter from start_year to end_year.
 
     The deferred contract is the next quarterly contract, which may fall in
-    the following year (December rolls into March).
+    the following year (December rolls into March). ``holidays=None`` uses
+    ``CME_HOLIDAYS``; pass ``set()`` to ignore holidays.
     """
+    if holidays is None:
+        holidays = CME_HOLIDAYS
     pairs: List[RollPair] = []
     for year in range(start_year, end_year + 1):
         for i, month in enumerate(QUARTER_MONTHS):

@@ -34,7 +34,7 @@ def test_known_expiries_2025():
 def test_expiry_is_two_business_days_before_third_wednesday():
     for y in range(2010, 2027):
         for m in (3, 6, 9, 12):
-            e = expiry_date(y, m)
+            e = expiry_date(y, m, holidays=set())
             assert e.weekday() == 0  # always a Monday without holidays
             assert (third_wednesday(y, m) - e).days == 2
 
@@ -62,3 +62,7 @@ def test_roll_calendar_length_and_order():
     assert len(cal) == 17 * 4
     expiries = [p[2] for p in cal]
     assert expiries == sorted(expiries)
+
+def test_juneteenth_moves_6em3_expiry():
+    assert expiry_date(2023, 6) == date(2023, 6, 16)
+    assert expiry_date(2023, 6, holidays=set()) == date(2023, 6, 19)
