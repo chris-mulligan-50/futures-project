@@ -1,6 +1,6 @@
 databento
 pandas
-scipy
+scipy>=1.15
 matplotlib
 ipykernel
 pytest

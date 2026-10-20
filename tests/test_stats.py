@@ -1,3 +1,5 @@
+import itertools
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -47,13 +49,34 @@ def test_sign_test_drops_zeros():
 
 
 @pytest.mark.parametrize("x", [
-    [3.5, -1.0, 2.0, 0.5, 4.0, -0.5, 1.5],  # ties: permutation p-value
-    # 12 distinct values: exact p-value. Zeros passed to scipy would switch
-    # it to the normal approximation, so they must be dropped first.
+    [3.5, -1.0, 2.0, 0.5, 4.0, -0.5, 1.5],  # ties
+    # 12 values: all 2**12 sign patterns are used. Two zeros passed to scipy
+    # would make it 2**14, more than n_resamples, and switch to random
+    # patterns, so they must be dropped first.
     [0.5, -1.0, 1.5, 2.0, -2.5, 3.0, 3.5, 4.0, -4.5, 5.0, 5.5, 6.0],
 ])
 def test_wilcoxon_drops_zeros(x):
     assert wilcoxon_test(x + [0.0, 0.0]) == wilcoxon_test(x)
+
+
+def exact_signed_rank_p(x):
+    """Two-sided signed-rank p-value from all 2**n sign patterns, ties averaged."""
+    x = np.asarray(x, dtype=float)
+    ranks = scipy_stats.rankdata(np.abs(x))
+    observed = ranks[x > 0].sum()
+    signs = np.array(list(itertools.product([0, 1], repeat=len(x))))
+    null = signs @ ranks
+    return min(1.0, 2 * min((null <= observed).mean(), (null >= observed).mean()))
+
+
+def test_wilcoxon_is_exact_with_ties_above_13_values():
+    # 14 tied values, where scipy's default uses the normal approximation
+    # (p = 0.084 against an exact 0.106). With enough resamples to enumerate
+    # every sign pattern, the test must match the exact p-value.
+    x = [-1.0] * 4 + [-0.5, 0.5] + [1.0] * 3 + [1.5] * 5
+    assert wilcoxon_test(x, n_resamples=2 ** len(x)) == pytest.approx(
+        exact_signed_rank_p(x)
+    )
 
 
 def test_missing_values_are_rejected():
@@ -77,13 +100,15 @@ def test_tests_hold_size_under_the_null():
     # Roll and control changes from the same distribution, on the tick grid
     # so ties and zeros occur as in real data. About 5% of nominal 5% tests
     # should reject; the sign test is discrete, so it rejects less often.
+    # Fewer Wilcoxon resamples keep this fast; the p-value stays valid, on a
+    # coarser grid.
     rng = np.random.default_rng(1)
     sims = 1000
     sign_rej = wilcoxon_rej = 0
     for _ in range(sims):
         d = np.abs(ticks(rng.normal(0, 3, N_ROLLS))) - np.abs(ticks(rng.normal(0, 3, N_ROLLS)))
         sign_rej += sign_test(d) < 0.05
-        wilcoxon_rej += wilcoxon_test(d) < 0.05
+        wilcoxon_rej += wilcoxon_test(d, n_resamples=199) < 0.05
     assert 0.015 <= sign_rej / sims <= 0.06
     assert 0.03 <= wilcoxon_rej / sims <= 0.07
 

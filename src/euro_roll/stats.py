@@ -24,7 +24,7 @@ from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
-from scipy.stats import binomtest, wilcoxon
+from scipy.stats import PermutationMethod, binomtest, wilcoxon
 
 N_RESAMPLES = 10_000
 SEED = 37000
@@ -54,18 +54,23 @@ def sign_test(x) -> float:
     return float(binomtest(int((nonzero > 0).sum()), len(nonzero)).pvalue)
 
 
-def wilcoxon_test(x) -> float:
+def wilcoxon_test(x, n_resamples: int = N_RESAMPLES, seed: int = SEED) -> float:
     """Two-sided Wilcoxon signed-rank test: is ``x`` symmetric about zero?
 
-    Zeros are dropped first, so they cannot change how scipy computes the
-    p-value. With ties, as on the tick grid, scipy uses the normal
-    approximation with a tie correction for more than 13 values.
+    Zeros are dropped first. The p-value comes from flipping the signs of
+    the ranked values, which stays exact when values tie, as they do on the
+    tick grid. All 2**n sign patterns are used when there are at most
+    ``n_resamples`` of them (n <= 13 by default); otherwise ``n_resamples``
+    random ones with a fixed seed. Scipy's default would switch to the
+    normal approximation above 13 tied values, so the 8 exploratory and 57
+    main rolls would get different methods.
     """
     x = _as_array(x)
     nonzero = x[x != 0]
     if len(nonzero) == 0:
         return np.nan
-    return float(wilcoxon(nonzero).pvalue)
+    method = PermutationMethod(n_resamples=n_resamples, rng=seed)
+    return float(wilcoxon(nonzero, method=method).pvalue)
 
 
 def bootstrap_ci(
@@ -127,7 +132,9 @@ def summarize(changes: pd.DataFrame) -> pd.DataFrame:
     ``changes`` has one row per roll, indexed by expiry date, with columns
     ``roll`` and ``control``: the net spread change in ticks in each window.
     A roll missing either change (excluded under decision 5) is dropped, so
-    ``n`` is the number of rolls the result rests on.
+    ``n`` is the number of rolls the result rests on. The block bootstrap
+    treats the remaining rolls as consecutive, so a block can span a
+    dropped roll.
 
     Rows:
 
