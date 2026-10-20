@@ -53,3 +53,18 @@ def test_every_roll_gets_a_summary_row_and_chart(tmp_path):
     assert list(summary["front"]) == ["6EU6"]
     assert summary["crossover_days_to_expiry"].iloc[0] == 3
     assert plot_volume_share(tables, tmp_path / "chart.png").exists()
+
+
+def test_repeated_front_symbols_are_kept_separate():
+    # 6EU6 is both the 2016 and the 2026 contract.
+    roll_2016 = ("6EU6", "6EZ6", date(2016, 9, 19))
+    days = pd.date_range(end="2016-09-19", periods=5, freq="B", tz="UTC")
+    rows = []
+    for d in days:
+        rows.append({"ts_event": d, "symbol": "6EU6", "volume": 10})
+        rows.append({"ts_event": d, "symbol": "6EZ6", "volume": 90})
+    both = pd.concat([pd.DataFrame(rows).set_index("ts_event"), _daily()]).sort_index()
+    rolls = [roll_2016, ROLL]
+    tables = build_tables(rolls, lambda syms, s, e: both)
+    summary = summary_table(tables, rolls)
+    assert list(summary["crossover_days_to_expiry"]) == [6, 3]
