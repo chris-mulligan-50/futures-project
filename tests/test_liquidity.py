@@ -36,7 +36,7 @@ def test_week_with_a_stale_quote(synthetic_bbo, synthetic_daily, synthetic_expec
     front = volumes(synthetic_expected, WEEK2.days, "front")
     assert out["deferred_volume"] == deferred.median() == 8_500
     assert out["deferred_share"] == pytest.approx(deferred.sum() / (deferred.sum() + front.sum()))
-    assert out["width_ticks"] == 2  # synthetic deferred quotes are two ticks wide
+    assert out["width_ticks"] == out["max_width_ticks"] == 2  # synthetic quotes are two ticks wide
     assert (out["snapshots"], out["deferred_ok"], out["valid"]) == (6, 5, 5)
     assert out["dropped"] == {"deferred stale": 1}
 
@@ -56,6 +56,15 @@ def test_deferred_without_a_bar_counts_as_zero(synthetic_daily):
     out = daily_volumes(synthetic_daily[~no_trade], FRONT, DEFERRED, WEEK2.days)
     assert out.loc[day].tolist() == [143_000, 0]
     assert out["deferred"].median() == 8_000
+
+
+def test_widest_quote_is_reported(synthetic_bbo, synthetic_daily):
+    bbo = synthetic_bbo.copy()
+    at_10 = (bbo["symbol"] == DEFERRED) & (bbo.index == synthetic.snapshot_time(date(2026, 11, 4)))
+    bbo.loc[at_10, "ask_px_00"] += 18 * synthetic.TICK  # 2 -> 20 ticks wide
+    out = measures(bbo, synthetic_daily, WEEK2)
+    assert (out["width_ticks"], out["max_width_ticks"]) == (2, 20)
+    assert out["valid"] == 5  # wide is not a rejection
 
 
 def test_quote_settings_take_effect(synthetic_bbo, synthetic_daily):

@@ -15,8 +15,12 @@ reports the deferred contract's:
   and is left out.
 * ``deferred_share``: deferred volume as a share of front plus deferred
   volume over the window.
-* ``width_ticks``: median bid-ask width at the 10:00 snapshot, in ticks,
-  over the days its quote is ``ok``.
+* ``width_ticks`` and ``max_width_ticks``: median and widest bid-ask width
+  at the 10:00 snapshot, in ticks, over the days its quote is ``ok``. A
+  quote can be fresh but wide; a wide book makes the midpoint, and so the
+  spread, less precise. Ticks are ``spread.TICK`` (0.00005). Before 2016
+  the exchange tick was 0.0001 (Databento definitions: 6EZ5 0.0001, 6EH6
+  0.00005), so then the narrowest possible book is 2.
 * ``snapshots``, ``deferred_ok`` and ``valid``: number of snapshot days
   (the baseline Friday and the five window days, the days a window's
   change can use), days the deferred quote is ``ok``, and days both legs
@@ -56,7 +60,7 @@ from euro_roll.windows import RollWindows, Window, select_windows
 
 KINDS = ("roll", "control")
 MEASURES = [
-    "deferred_volume", "deferred_share", "width_ticks",
+    "deferred_volume", "deferred_share", "width_ticks", "max_width_ticks",
     "snapshots", "deferred_ok", "valid", "dropped",
 ]
 
@@ -105,12 +109,13 @@ def window_liquidity(
 
     spreads = daily_spreads(bbo, front, deferred, snapshot_days(window), at, max_age)
     ok = spreads["deferred_status"] == "ok"
-    width = (spreads.loc[ok, "deferred_ask"] - spreads.loc[ok, "deferred_bid"]) / TICK
+    width = ((spreads.loc[ok, "deferred_ask"] - spreads.loc[ok, "deferred_bid"]) / TICK).round(6)
 
     return {
         "deferred_volume": volumes["deferred"].median() if len(volumes) else float("nan"),
         "deferred_share": volumes["deferred"].sum() / total if total else float("nan"),
-        "width_ticks": width.round(6).median() if ok.any() else float("nan"),
+        "width_ticks": width.median() if ok.any() else float("nan"),
+        "max_width_ticks": width.max() if ok.any() else float("nan"),
         "snapshots": len(spreads),
         "deferred_ok": int(ok.sum()),
         "valid": int(spreads["valid"].sum()),
@@ -151,7 +156,7 @@ def liquidity_table(rows: Iterable[Dict[str, object]]) -> pd.DataFrame:
 def compare_windows(table: pd.DataFrame) -> pd.DataFrame:
     """Roll vs. control across all rolls, one column per window kind.
 
-    Volume, share and width are medians across rolls; the snapshot shares
+    Volume, share and widths are medians across rolls; the snapshot shares
     are pooled over every snapshot day.
     """
     out = {}
@@ -163,6 +168,7 @@ def compare_windows(table: pd.DataFrame) -> pd.DataFrame:
             "median deferred volume": t["deferred_volume"].median(),
             "median deferred share": t["deferred_share"].median(),
             "median deferred width (ticks)": t["width_ticks"].median(),
+            "median widest deferred width (ticks)": t["max_width_ticks"].median(),
             "deferred quote ok": t["deferred_ok"].sum() / snapshots,
             "valid snapshots": t["valid"].sum() / snapshots,
             "rolls with a dropped day": int((t["valid"] < t["snapshots"]).sum()),
@@ -197,6 +203,12 @@ def window_requests(window: Window) -> List[Tuple[str, str, pd.Timestamp, pd.Tim
         ("ohlcv-1d", "daily", pd.Timestamp(window.start, tz="UTC"),
          pd.Timestamp(window.end + timedelta(days=1), tz="UTC")),
     ]
+
+
+def _summary(table: pd.DataFrame) -> str:
+    reasons = drop_reasons(table)
+    dropped = reasons.to_string() if len(reasons) else "No dropped snapshot days."
+    return f"{compare_windows(table)}\n\n{dropped}"
 
 
 def _rolls(all_rolls: bool) -> List[RollWindows]:
@@ -243,9 +255,11 @@ def main(argv=None):
     csv.to_csv(OUTPUT)
 
     with pd.option_context("display.width", 120, "display.float_format", "{:.3f}".format):
-        print(f"\nWrote {OUTPUT}\n")
-        print(compare_windows(table), "\n")
-        print(drop_reasons(table))
+        print(f"\nWrote {OUTPUT}")
+        main_test = table.index < EXPLORATORY_FIRST_EXPIRY
+        for name, rows in [("Main-test rolls", main_test), ("Exploratory rolls", ~main_test)]:
+            if rows.any():
+                print(f"\n{name}:\n{_summary(table[rows])}")
 
 
 if __name__ == "__main__":
