@@ -97,34 +97,27 @@ Issue.
    subtract the front midpoint from the deferred midpoint, reported in
    ticks. Apply a consistent quote-age limit and reject missing or
    stale observations.
-4. **Compare changes.** Measure each window from the preceding Friday's
-   snapshot to its ending Friday's snapshot, giving five daily changes.
-   Compare absolute roll and control changes for magnitude, and report
-   signed changes separately.
+4. **Compare changes.** Measure each window's net change from the
+   preceding Friday's snapshot to its ending Friday's snapshot. Compare
+   absolute roll and control changes for magnitude, and report signed
+   changes separately.
 5. **Summarize results.** Report one paired comparison per roll. Test
    the magnitude differences with a sign test and a Wilcoxon signed-rank
    test, and give a bootstrap confidence interval for their mean.
-   Consecutive rolls may share rate regimes, so we assess dependence
-   across rolls before choosing the interval procedure. We do not count
-   minute rows as independent tests.
+   Consecutive rolls may share rate regimes, so a block bootstrap over a
+   year of rolls is reported alongside; both intervals are fixed in
+   advance. We do not count minute rows as independent tests.
 6. **Check sensitivity.** Repeat with alternative window lengths and
-   offsets, and
-   excluding pairs where either window contains a scheduled Fed or ECB
-   policy decision.
+   offsets, excluding pairs where either window contains a scheduled Fed
+   or ECB policy decision, and excluding rolls with wide quotes.
 
-### Open Decisions
+### Method Decisions
 
-To be settled in the method decision Issue before the main test runs.
-
-- **Number of control windows.** One control week per roll (proposed),
-  or several earlier weeks to give a distribution of normal moves.
-- **Carry and policy controls.** First tabulate how often Fed or ECB
-  decisions fall in roll and control windows. Then flag or exclude those
-  windows (proposed, step 6), and compare the spread with the simple
-  carry-implied level, using observed USD and EUR short rates rather than
-  assuming rate regimes are shared.
-- **Remaining parameters.** Snapshot time, quote-age limit, missing-data
-  policy, and confidence-interval procedure.
+The open decisions (control windows, snapshot time, quote-age limit,
+missing data, holidays, Fed/ECB meetings, carry and rates, confidence
+intervals, held-out split, wide quotes) are settled in
+[docs/ANALYSIS_PLAN.md](docs/ANALYSIS_PLAN.md). It is frozen before the
+main test runs, and any later change goes in its deviation log.
 
 ## Deliverables and Scope
 
@@ -148,7 +141,10 @@ in scope.
 **Limitations.** Spread changes also reflect interest-rate expectations
 and other market conditions. The analysis can identify patterns
 consistent with roll pressure, but cannot establish actual costs paid by
-funds or prove that rolling caused those movements.
+funds or prove that rolling caused those movements. The control week sits
+further from expiry, where the deferred contract is quoted more widely, so
+control-week midpoints are noisier. That biases the magnitude test toward
+finding no effect, and excluding wide quotes does not fully remove it.
 
 ## Task Roadmap
 
