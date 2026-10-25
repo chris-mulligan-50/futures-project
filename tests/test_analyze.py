@@ -12,11 +12,12 @@ from euro_roll.windows import roll_window, select_windows
 FRONT_BID = 1.1
 
 
-def fake_fetch(spread_ticks, has_data=lambda day: True):
-    """A ``fetch`` quoting both legs one tick wide at 10:00 Chicago each weekday.
+def fake_fetch(spread_ticks, has_data=lambda day: True, deferred_width=lambda day: 1):
+    """A ``fetch`` quoting both legs at 10:00 Chicago each weekday.
 
-    The deferred-minus-front spread on ``day`` is ``spread_ticks(day)``. Days
-    where ``has_data(day)`` is false have no quotes.
+    The deferred-minus-front spread on ``day`` is ``spread_ticks(day)``. The
+    front is one tick wide and the deferred ``deferred_width(day)`` ticks.
+    Days where ``has_data(day)`` is false have no quotes.
     """
     def fetch(symbols, start, end):
         front, deferred = symbols
@@ -25,8 +26,9 @@ def fake_fetch(spread_ticks, has_data=lambda day: True):
             at = snapshot_time(day)
             if start <= at < end and has_data(day):
                 deferred_bid = FRONT_BID + spread_ticks(day) * TICK
+                deferred_ask = deferred_bid + deferred_width(day) * TICK
                 rows.append({"ts_recv": at, "symbol": front, "bid_px_00": FRONT_BID, "ask_px_00": FRONT_BID + TICK})
-                rows.append({"ts_recv": at, "symbol": deferred, "bid_px_00": deferred_bid, "ask_px_00": deferred_bid + TICK})
+                rows.append({"ts_recv": at, "symbol": deferred, "bid_px_00": deferred_bid, "ask_px_00": deferred_ask})
         bbo = pd.DataFrame(rows, columns=["ts_recv", "symbol", "bid_px_00", "ask_px_00"])
         return bbo.set_index(pd.DatetimeIndex(bbo.pop("ts_recv"), tz="UTC"))
     return fetch
@@ -54,6 +56,7 @@ def test_planted_roll_effect_is_found_and_written(tmp_path):
     assert (h1["n"], h1["n_positive"], h1["mean"]) == (8, 8, 13.5)
     assert h1["sign_p"] < 0.01
     assert "stats_main" not in results and not (tmp_path / "stats_main.csv").exists()
+    assert results["stats_exploratory_narrow"].loc["h1", "n"] == 8
     assert (tmp_path / "figures" / "roll_vs_control.png").exists()
 
     # Labor Day 2026 falls in the September 2026 roll window.
@@ -61,6 +64,16 @@ def test_planted_roll_effect_is_found_and_written(tmp_path):
     assert dropped.to_dict("records") == [
         {"expiry": "2026-09-14", "window": "roll", "day": "2026-09-07", "reason": "holiday"},
     ]
+
+
+def test_wide_quote_on_a_day_used_drops_the_roll_from_the_narrow_stats(tmp_path):
+    rolls = select_windows(config.exploratory(roll_calendar(2024, 2026)))
+    wide_day = rolls[0].control.end
+    fetch = fake_fetch(lambda day: 50 + day.toordinal() % 3, deferred_width=lambda day: 8 if day == wide_day else 1)
+    results = run(rolls, fetch, tmp_path)
+    assert results["roll_vs_control"]["control_max_width"].tolist() == [8] + [1] * 7
+    assert results["stats_exploratory"].loc["h1", "n"] == 8
+    assert results["stats_exploratory_narrow"].loc["h1", "n"] == 7
 
 
 def test_main_test_falls_back_to_2017_when_early_data_is_poor(tmp_path):

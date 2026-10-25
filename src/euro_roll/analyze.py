@@ -10,6 +10,8 @@ separately (decision 10). Writes to ``outputs/``:
   days used.
 * ``dropped_days.csv``: every dropped snapshot day and its reason (#24).
 * ``stats_main.csv`` and ``stats_exploratory.csv``: ``stats.summarize``.
+  The ``_narrow`` versions leave out rolls where either leg is quoted wider
+  than 5 ticks on a day a change uses (decision 11's sensitivity check).
 * ``figures/roll_vs_control.png``: both changes per roll over time.
 
 Decision 10: if more than 20% of the snapshot days of the main-test rolls
@@ -49,6 +51,7 @@ from euro_roll.windows import RollWindows, Window, select_windows
 OUTPUTS = cache.REPO_ROOT / "outputs"
 FALLBACK_FIRST_EXPIRY = date(2017, 6, 1)  # decision 10
 MAX_DROP_SHARE = 0.20  # decision 10
+MAX_WIDTH_TICKS = 5  # decision 11 sensitivity
 
 Fetch = Callable[[List[str], pd.Timestamp, pd.Timestamp], pd.DataFrame]
 
@@ -168,10 +171,13 @@ def run(rolls: List[RollWindows], fetch: Fetch, out_dir=OUTPUTS) -> Dict[str, ob
         "exploratory": [p[2] for p in config.exploratory(pairs)],
     }
     for name, expiries in groups.items():
-        if expiries:
-            stats = summarize(changes.loc[expiries])
-            stats.to_csv(out_dir / f"stats_{name}.csv")
-            results[f"stats_{name}"] = stats
+        table = changes.loc[expiries]
+        narrow = (table[[f"{kind}_max_width" for kind in KINDS]] <= MAX_WIDTH_TICKS).all(axis=1)
+        for label, subset in [(name, table), (f"{name}_narrow", table[narrow])]:
+            if len(subset):
+                stats = summarize(subset)
+                stats.to_csv(out_dir / f"stats_{label}.csv")
+                results[f"stats_{label}"] = stats
     return results
 
 
@@ -205,9 +211,9 @@ def main(argv=None):
     print(f"\nWrote {OUTPUTS}")
     print(f"Pre-2017-06 drop share (decision 10): {results['early_drop_share']:.1%}")
     with pd.option_context("display.width", 120, "display.float_format", "{:.3f}".format):
-        for name in ("stats_main", "stats_exploratory"):
-            if name in results:
-                print(f"\n{name}:\n{results[name]}")
+        for name, table in results.items():
+            if name.startswith("stats_"):
+                print(f"\n{name} (n = {table.loc['h1', 'n']}):\n{table.loc['h1']}")
 
 
 if __name__ == "__main__":

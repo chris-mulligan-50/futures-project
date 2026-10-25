@@ -10,7 +10,7 @@ from euro_roll.changes import (
     roll_changes,
     window_change,
 )
-from euro_roll.spread import daily_spreads
+from euro_roll.spread import TICK, daily_spreads
 from euro_roll.windows import Window, roll_window, select_windows
 from synthetic import DEFERRED, FRONT
 
@@ -18,12 +18,23 @@ from synthetic import DEFERRED, FRONT
 WINDOW = roll_window(date(2026, 9, 14))
 
 
-def fake_spreads(window=WINDOW, dropped=()):
-    """``daily_spreads``-like rows over ``needed_days(window)``: 100, 101, ... ticks."""
+def fake_spreads(window=WINDOW, dropped=(), deferred_width=None):
+    """``daily_spreads``-like rows over ``needed_days(window)``: 100, 101, ... ticks.
+
+    Both legs are quoted one tick wide, except the deferred on the days in
+    ``deferred_width``, a mapping of day to width in ticks.
+    """
     days = needed_days(window)
     valid = pd.Series([d not in dropped for d in days], index=days)
     ticks = pd.Series([100.0 + i for i in range(len(days))], index=days)
-    return pd.DataFrame({"spread_ticks": ticks.where(valid), "valid": valid})
+    width = pd.Series([(deferred_width or {}).get(d, 1) for d in days], index=days)
+    front_bid = pd.Series(1.1, index=days)
+    deferred_bid = front_bid + ticks * TICK
+    return pd.DataFrame({
+        "front_bid": front_bid, "front_ask": front_bid + TICK,
+        "deferred_bid": deferred_bid, "deferred_ask": deferred_bid + width * TICK,
+        "spread_ticks": ticks.where(valid), "valid": valid,
+    })
 
 
 def test_needed_days_add_two_fallback_days_before_the_baseline():
@@ -34,7 +45,14 @@ def test_change_is_ending_friday_minus_baseline_friday():
     # Sep 4 is 102 ticks, Sep 11 is 107.
     assert window_change(fake_spreads(), WINDOW) == {
         "change": 5.0, "baseline_used": date(2026, 9, 4), "end_used": date(2026, 9, 11),
+        "max_width": 1.0,
     }
+
+
+def test_max_width_looks_only_at_the_days_used():
+    # A wide deferred quote on Wednesday does not count; on the ending Friday it does.
+    assert window_change(fake_spreads(deferred_width={date(2026, 9, 9): 20}), WINDOW)["max_width"] == 1.0
+    assert window_change(fake_spreads(deferred_width={date(2026, 9, 11): 7}), WINDOW)["max_width"] == 7.0
 
 
 def test_dropped_baseline_uses_latest_valid_day_before_it():

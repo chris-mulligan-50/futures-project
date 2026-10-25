@@ -18,6 +18,7 @@ from typing import Dict, Iterable, List, Optional
 
 import pandas as pd
 
+from euro_roll.spread import TICK
 from euro_roll.windows import RollWindows, Window
 
 FALLBACK_DAYS = 2  # weekdays before a dropped baseline or ending Friday
@@ -46,22 +47,26 @@ def endpoint(spreads: pd.DataFrame, day: date) -> Optional[date]:
 
 
 def window_change(spreads: pd.DataFrame, window: Window) -> Dict[str, object]:
-    """Net change in ticks over ``window``, and the days it used.
+    """Net change in ticks over ``window``, the days it used, and its widest quote.
 
     ``spreads`` is ``daily_spreads`` output covering ``needed_days(window)``.
     Keys: ``change`` (NaN if either end has no valid day), ``baseline_used``
-    and ``end_used`` (None if no valid day).
+    and ``end_used`` (None if no valid day), and ``max_width``: the widest
+    bid-ask of either leg on those two days, in ticks, for decision 11.
     """
     start = endpoint(spreads, window.baseline)
     end = endpoint(spreads, window.end)
-    change = float("nan")
+    change = max_width = float("nan")
     if start is not None and end is not None:
-        change = spreads.at[end, "spread_ticks"] - spreads.at[start, "spread_ticks"]
-    return {"change": change, "baseline_used": start, "end_used": end}
+        both = spreads.loc[[start, end]]
+        change = both.at[end, "spread_ticks"] - both.at[start, "spread_ticks"]
+        widths = pd.concat([both[f"{leg}_ask"] - both[f"{leg}_bid"] for leg in ("front", "deferred")])
+        max_width = round(widths.max() / TICK, 6)
+    return {"change": change, "baseline_used": start, "end_used": end, "max_width": max_width}
 
 
 def roll_changes(rw: RollWindows, spreads: Dict[str, pd.DataFrame]) -> Dict[str, object]:
-    """One row: the roll's contracts, then each window's change and the days it used.
+    """One row: the roll's contracts, then each window's change, days used and widest quote.
 
     ``spreads`` maps ``"roll"`` and ``"control"`` to that window's
     ``daily_spreads`` output.
@@ -69,9 +74,8 @@ def roll_changes(rw: RollWindows, spreads: Dict[str, pd.DataFrame]) -> Dict[str,
     row: Dict[str, object] = {"expiry": rw.expiry, "front": rw.front, "deferred": rw.deferred}
     for kind in KINDS:
         result = window_change(spreads[kind], getattr(rw, kind))
-        row[kind] = result["change"]
-        row[f"{kind}_baseline_used"] = result["baseline_used"]
-        row[f"{kind}_end_used"] = result["end_used"]
+        row[kind] = result.pop("change")
+        row.update({f"{kind}_{key}": value for key, value in result.items()})
     return row
 
 
