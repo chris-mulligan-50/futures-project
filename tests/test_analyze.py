@@ -2,6 +2,7 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 
 from euro_roll import analyze, cache, config
 from euro_roll.analyze import quote_range, run
@@ -34,6 +35,17 @@ def fake_fetch(spread_ticks, has_data=lambda day: True, deferred_width=lambda da
     return fetch
 
 
+def fake_rates(usd=lambda day: 4.0):
+    """Daily ``load_rates``-like table with flat curves: USD ``usd(day)``, EUR 2%."""
+    days = pd.date_range("2010-01-01", "2026-12-31", name="date")
+    usd_rates = [usd(d.date()) for d in days]
+    return pd.DataFrame({"usd_3m": usd_rates, "usd_6m": usd_rates, "eur_3m": 2.0, "eur_6m": 2.0}, index=days)
+
+
+def h1(results, split="exploratory", spec="spread"):
+    return results["stats"].loc[(split, spec, "h1")]
+
+
 def test_quote_range_starts_at_the_first_fallback_session():
     window = roll_window(date(2026, 9, 14))  # baseline Fri Sep 4, fallback from Wed Sep 2
     start, end = quote_range(window)
@@ -46,17 +58,20 @@ def test_planted_roll_effect_is_found_and_written(tmp_path):
     # The spread is 50 ticks, except 50 + 10 + k in the last three days of
     # roll k's window, so roll k's spread rises 10 + k ticks.
     raised = {r.roll.end - timedelta(days=i): 60 + k for k, r in enumerate(rolls) for i in range(3)}
-    results = run(rolls, fake_fetch(lambda day: raised.get(day, 50)), tmp_path)
+    results = run(rolls, fake_fetch(lambda day: raised.get(day, 50)), fake_rates(), tmp_path)
 
     changes = pd.read_csv(tmp_path / "roll_vs_control.csv", index_col="expiry")
     assert changes["roll"].tolist() == [10 + k for k in range(8)]
     assert (changes["control"] == 0).all()
 
-    h1 = results["stats_exploratory"].loc["h1"]
-    assert (h1["n"], h1["n_positive"], h1["mean"]) == (8, 8, 13.5)
-    assert h1["sign_p"] < 0.01
-    assert "stats_main" not in results and not (tmp_path / "stats_main.csv").exists()
-    assert results["stats_exploratory_narrow"].loc["h1", "n"] == 8
+    spread = h1(results)
+    assert (spread["n"], spread["n_positive"], spread["mean"]) == (8, 8, 13.5)
+    assert spread["sign_p"] < 0.01
+    assert h1(results, spec="narrow_quotes")["n"] == 8
+    # Rates are flat, so carry explains none of the move.
+    assert h1(results, spec="carry_3m")["n_positive"] == 8
+    stats = pd.read_csv(tmp_path / "stats.csv", index_col=["split", "spec", "test"])
+    assert set(stats.index.get_level_values("split")) == {"exploratory"}
     assert (tmp_path / "figures" / "roll_vs_control.png").exists()
 
     # Labor Day 2026 falls in the September 2026 roll window.
@@ -70,23 +85,41 @@ def test_wide_quote_on_a_day_used_drops_the_roll_from_the_narrow_stats(tmp_path)
     rolls = select_windows(config.exploratory(roll_calendar(2024, 2026)))
     wide_day = rolls[0].control.end
     fetch = fake_fetch(lambda day: 50 + day.toordinal() % 3, deferred_width=lambda day: 8 if day == wide_day else 1)
-    results = run(rolls, fetch, tmp_path)
+    results = run(rolls, fetch, fake_rates(), tmp_path)
     assert results["roll_vs_control"]["control_max_width"].tolist() == [8] + [1] * 7
-    assert results["stats_exploratory"].loc["h1", "n"] == 8
-    assert results["stats_exploratory_narrow"].loc["h1", "n"] == 7
+    assert h1(results)["n"] == 8
+    assert h1(results, spec="narrow_quotes")["n"] == 7
+
+
+def test_rate_move_is_taken_out_of_the_carry_comparison(tmp_path):
+    rolls = select_windows(config.exploratory(roll_calendar(2024, 2026)))
+    # USD rates rise 10 bp on the Wednesday of the first roll window. The
+    # ending Friday's snapshot sees it (previous day's rate); the baseline doesn't.
+    jump = rolls[0].roll.days[2]
+    # The spread is flat in roll windows and ends control windows 1-2 ticks up.
+    control_ends = {r.control.end: 51 + k % 2 for k, r in enumerate(rolls)}
+    fetch = fake_fetch(lambda day: control_ends.get(day, 50))
+    results = run(rolls, fetch, fake_rates(lambda day: 4.1 if day >= jump else 4.0), tmp_path)
+    carry = results["carry"]
+    assert carry["roll_spot"].tolist() == pytest.approx([10] + [0] * 7)
+    assert carry["roll_forward"].tolist() == pytest.approx([10] + [0] * 7)
+    assert (carry["roll_implied"] == 0).all() and (carry["control_spot"] == 0).all()
+    # The spread did not move in the first roll window, so carry predicted a rise that did not happen.
+    roll_excess = results["stats"].loc[("exploratory", "carry_3m", "h2_roll")]
+    assert (roll_excess["n_negative"], roll_excess["n_positive"]) == (1, 0)
 
 
 def test_main_test_falls_back_to_2017_when_early_data_is_poor(tmp_path):
     rolls = select_windows(config.main_test(roll_calendar(2010, 2024)))
     noise = lambda day: 50 + day.toordinal() % 3
 
-    good = run(rolls, fake_fetch(noise), tmp_path / "good")
+    good = run(rolls, fake_fetch(noise), fake_rates(), tmp_path / "good")
     assert good["early_drop_share"] == 0
-    assert good["stats_main"].loc["h1", "n"] == 57
+    assert h1(good, split="main_test")["n"] == 57
 
-    poor = run(rolls, fake_fetch(noise, has_data=lambda day: day >= date(2017, 1, 1)), tmp_path / "poor")
+    poor = run(rolls, fake_fetch(noise, has_data=lambda day: day >= date(2017, 1, 1)), fake_rates(), tmp_path / "poor")
     assert poor["early_drop_share"] > 0.2
-    assert poor["stats_main"].loc["h1", "n"] == 30  # expiries 2017-06 to 2024-09
+    assert h1(poor, split="main_test")["n"] == 30  # expiries 2017-06 to 2024-09
 
 
 def test_main_shows_cost_and_downloads_nothing_by_default(monkeypatch, tmp_path, capsys):

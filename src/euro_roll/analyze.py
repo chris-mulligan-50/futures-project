@@ -6,12 +6,20 @@ the net change per window (``changes.py``, decision 5) and run the planned
 tests (``stats.py``, decision 9) on the main-test and exploratory rolls
 separately (decision 10). Writes to ``outputs/``:
 
-* ``roll_vs_control.csv``: one row per roll, both changes in ticks and the
-  days used.
+* ``roll_vs_control.csv``: one row per roll, both changes in ticks, the
+  days used and the widest quote on them.
+* ``carry.csv``: implied and observed rate-gap changes per window, in
+  basis points (``carry.py``, decision 8).
 * ``dropped_days.csv``: every dropped snapshot day and its reason (#24).
-* ``stats_main.csv`` and ``stats_exploratory.csv``: ``stats.summarize``.
-  The ``_narrow`` versions leave out rolls where either leg is quoted wider
-  than 5 ticks on a day a change uses (decision 11's sensitivity check).
+* ``stats.csv``: ``stats.summarize`` for each split (``main_test``,
+  ``exploratory``) and specification:
+
+  - ``spread``: the main test, changes in ticks.
+  - ``narrow_quotes``: without rolls where either leg is quoted wider than
+    5 ticks on a day a change uses (decision 11's sensitivity check).
+  - ``carry_3m``: implied minus observed 3-month gap change, in basis
+    points (decision 8, main comparison).
+  - ``carry_forward``: the same against the forward gap (sensitivity).
 * ``figures/roll_vs_control.png``: both changes per roll over time.
 
 Decision 10: if more than 20% of the snapshot days of the main-test rolls
@@ -40,10 +48,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from euro_roll import cache, config
+from euro_roll.carry import carry_table, excess
 from euro_roll.changes import KINDS, change_table, needed_days, roll_changes
 from euro_roll.client import get_client
 from euro_roll.download import fetch_bbo_1m, request_params
 from euro_roll.expiries import roll_calendar
+from euro_roll.rates import load_rates
 from euro_roll.spread import daily_spreads, session_open, snapshot_time
 from euro_roll.stats import summarize
 from euro_roll.windows import RollWindows, Window, select_windows
@@ -146,39 +156,49 @@ def plot_roll_vs_control(changes: pd.DataFrame, path) -> Path:
     return path
 
 
-def run(rolls: List[RollWindows], fetch: Fetch, out_dir=OUTPUTS) -> Dict[str, object]:
+def run(rolls: List[RollWindows], fetch: Fetch, rates: pd.DataFrame, out_dir=OUTPUTS) -> Dict[str, object]:
     """Compute everything for ``rolls`` and write it to ``out_dir``.
 
-    Returns the tables written and decision 10's drop share.
+    ``rates`` is ``rates.load_rates()`` output. Returns the tables written and
+    decision 10's drop share.
     """
     spreads = {roll.expiry: roll_spreads(roll, fetch) for roll in rolls}
     share = early_drop_share(rolls, spreads)
     changes = change_table(roll_changes(roll, spreads[roll.expiry]) for roll in rolls)
+    carry = carry_table(rolls, spreads, changes, rates)
     dropped = dropped_log(spreads)
+
+    narrow = (changes[[f"{kind}_max_width" for kind in KINDS]] <= MAX_WIDTH_TICKS).all(axis=1)
+    specs = {
+        "spread": changes,
+        "narrow_quotes": changes[narrow],
+        "carry_3m": excess(carry, "spot"),
+        "carry_forward": excess(carry, "forward"),
+    }
+    pairs = [(r.front, r.deferred, r.expiry) for r in rolls]
+    first = FALLBACK_FIRST_EXPIRY if share > MAX_DROP_SHARE else config.FIRST_EXPIRY
+    splits = {
+        "main_test": [p[2] for p in config.main_test(pairs) if p[2] >= first],
+        "exploratory": [p[2] for p in config.exploratory(pairs)],
+    }
+    stats = {}
+    for split, expiries in splits.items():
+        for spec, table in specs.items():
+            subset = table[table.index.isin(expiries)]
+            if len(subset):
+                stats[(split, spec)] = summarize(subset)
+    stats = pd.concat(stats, names=["split", "spec", "test"])
 
     out_dir.mkdir(parents=True, exist_ok=True)
     changes.to_csv(out_dir / "roll_vs_control.csv")
+    carry.to_csv(out_dir / "carry.csv")
     dropped.to_csv(out_dir / "dropped_days.csv", index=False)
+    stats.to_csv(out_dir / "stats.csv")
     plot_roll_vs_control(changes, out_dir / "figures" / "roll_vs_control.png")
-    results: Dict[str, object] = {
-        "roll_vs_control": changes, "dropped_days": dropped, "early_drop_share": share,
+    return {
+        "roll_vs_control": changes, "carry": carry, "dropped_days": dropped,
+        "stats": stats, "early_drop_share": share,
     }
-
-    pairs = [(r.front, r.deferred, r.expiry) for r in rolls]
-    first = FALLBACK_FIRST_EXPIRY if share > MAX_DROP_SHARE else config.FIRST_EXPIRY
-    groups = {
-        "main": [p[2] for p in config.main_test(pairs) if p[2] >= first],
-        "exploratory": [p[2] for p in config.exploratory(pairs)],
-    }
-    for name, expiries in groups.items():
-        table = changes.loc[expiries]
-        narrow = (table[[f"{kind}_max_width" for kind in KINDS]] <= MAX_WIDTH_TICKS).all(axis=1)
-        for label, subset in [(name, table), (f"{name}_narrow", table[narrow])]:
-            if len(subset):
-                stats = summarize(subset)
-                stats.to_csv(out_dir / f"stats_{label}.csv")
-                results[f"stats_{label}"] = stats
-    return results
 
 
 def main(argv=None):
@@ -207,13 +227,14 @@ def main(argv=None):
         print("Nothing downloaded. Re-run with --download to fetch.")
         return
 
-    results = run(rolls, lambda symbols, start, end: fetch_bbo_1m(symbols, start, end, client))
+    fetch = lambda symbols, start, end: fetch_bbo_1m(symbols, start, end, client)
+    results = run(rolls, fetch, load_rates())
     print(f"\nWrote {OUTPUTS}")
     print(f"Pre-2017-06 drop share (decision 10): {results['early_drop_share']:.1%}")
+    h1 = results["stats"].xs("h1", level="test")
+    columns = ["n", "n_positive", "mean", "ci_low", "ci_high", "sign_p", "wilcoxon_p"]
     with pd.option_context("display.width", 120, "display.float_format", "{:.3f}".format):
-        for name, table in results.items():
-            if name.startswith("stats_"):
-                print(f"\n{name} (n = {table.loc['h1', 'n']}):\n{table.loc['h1']}")
+        print(f"\nH1, |roll| - |control|:\n{h1[columns]}")
 
 
 if __name__ == "__main__":
