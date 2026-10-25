@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 import synthetic
-from euro_roll.spread import daily_spreads, drop_counts, dropped_days, quotes_at
+from euro_roll.spread import cme_holidays, daily_spreads, drop_counts, dropped_days, quotes_at
 from synthetic import DAYS, DEFERRED, FRONT
 
 
@@ -112,3 +112,30 @@ def test_drop_report(synthetic_bbo):
         "front missing, deferred missing": 1,
         "deferred stale": 1,
     }
+
+
+def test_cme_holidays():
+    hol = cme_holidays(date(2021, 1, 1), date(2026, 12, 31))
+    assert date(2026, 9, 7) in hol  # Labor Day, in the Sep 2026 roll window
+    assert date(2021, 2, 15) in hol  # Presidents Day
+    assert date(2022, 6, 20) in hol  # Juneteenth observed (June 19 was a Sunday)
+    assert date(2021, 6, 18) not in hol  # not a CME holiday before 2022
+    assert date(2021, 12, 24) in hol  # Christmas observed (Dec 25 was a Saturday)
+    assert date(2026, 10, 12) not in hol  # Columbus Day: CME FX trades normally
+    assert date(2026, 11, 11) not in hol  # Veterans Day: same
+
+
+def test_holiday_is_dropped_even_with_quotes(synthetic_bbo):
+    day = date(2026, 10, 27)
+    row = spreads(synthetic_bbo, holidays={day}).loc[day]
+    assert (row["front_status"], row["deferred_status"]) == ("ok", "ok")
+    assert not row["valid"] and pd.isna(row["spread_ticks"])
+    assert row["reason"] == "holiday"
+
+
+def test_cme_holidays_are_dropped_by_default(synthetic_bbo):
+    labor_day = date(2026, 9, 7)
+    out = daily_spreads(synthetic_bbo, FRONT, DEFERRED, [labor_day])
+    assert out.loc[labor_day, "reason"] == "holiday"
+    kept = daily_spreads(synthetic_bbo, FRONT, DEFERRED, [labor_day], holidays=set())
+    assert kept.loc[labor_day, "reason"] == "front missing, deferred missing"
