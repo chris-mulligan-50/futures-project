@@ -54,6 +54,7 @@ def test_planted_roll_effect_is_found_and_written(tmp_path):
     assert (h1["n"], h1["n_positive"], h1["mean"]) == (8, 8, 13.5)
     assert h1["sign_p"] < 0.01
     assert "stats_main" not in results and not (tmp_path / "stats_main.csv").exists()
+    assert (tmp_path / "figures" / "roll_vs_control.png").exists()
 
     # Labor Day 2026 falls in the September 2026 roll window.
     dropped = pd.read_csv(tmp_path / "dropped_days.csv")

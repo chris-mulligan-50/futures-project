@@ -10,6 +10,7 @@ separately (decision 10). Writes to ``outputs/``:
   days used.
 * ``dropped_days.csv``: every dropped snapshot day and its reason (#24).
 * ``stats_main.csv`` and ``stats_exploratory.csv``: ``stats.summarize``.
+* ``figures/roll_vs_control.png``: both changes per roll over time.
 
 Decision 10: if more than 20% of the snapshot days of the main-test rolls
 before 2017-06 are dropped (holidays aside), the main test starts at the
@@ -27,8 +28,13 @@ from __future__ import annotations
 
 import argparse
 from datetime import date
+from pathlib import Path
 from typing import Callable, Dict, List, Tuple
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import pandas as pd
 
 from euro_roll import cache, config
@@ -98,6 +104,45 @@ def early_drop_share(rolls: List[RollWindows], spreads: Dict[date, Dict[str, pd.
     return dropped / total if total else float("nan")
 
 
+def plot_roll_vs_control(changes: pd.DataFrame, path) -> Path:
+    """Roll- and control-window change per roll by expiry, exploratory rolls shaded."""
+    roll_color, control_color, ink, muted = "#2a78d6", "#898781", "#0b0b0b", "#52514e"
+    expiry = pd.to_datetime(pd.Series(changes.index, index=changes.index))
+
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    ax.axhline(0, color="#c3c2b7", lw=1, zorder=1)
+    exploratory = expiry >= pd.Timestamp(config.EXPLORATORY_FIRST_EXPIRY)
+    if exploratory.any():
+        start = expiry[exploratory].min() - pd.Timedelta(days=45)
+        ax.axvspan(start, expiry.max() + pd.Timedelta(days=45), color="#f0efec", zorder=0)
+        ax.text(start + pd.Timedelta(days=20), 1, "exploratory rolls", transform=ax.get_xaxis_transform(),
+                va="top", fontsize=9, color=muted)
+    for column, color, label, size in [
+        ("control", control_color, "Control week", 30),
+        ("roll", roll_color, "Roll week", 40),
+    ]:
+        ax.scatter(expiry, changes[column], s=size, color=color, label=label,
+                   edgecolors="#fcfcfb", linewidths=1, zorder=3)
+
+    ax.set_ylabel("Net spread change (ticks)", color=ink)
+    ax.set_title("Spread change per roll, baseline Friday to ending Friday",
+                 loc="left", fontsize=11, color=ink, pad=24)
+    ax.grid(axis="y", color="#e1e0d9", lw=0.6)
+    ax.set_axisbelow(True)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color("#c3c2b7")
+    ax.tick_params(colors=muted)
+    ax.legend(loc="lower right", bbox_to_anchor=(1, 1), ncol=2, frameon=False, labelcolor=ink)
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="#fcfcfb")
+    plt.close(fig)
+    return path
+
+
 def run(rolls: List[RollWindows], fetch: Fetch, out_dir=OUTPUTS) -> Dict[str, object]:
     """Compute everything for ``rolls`` and write it to ``out_dir``.
 
@@ -111,6 +156,7 @@ def run(rolls: List[RollWindows], fetch: Fetch, out_dir=OUTPUTS) -> Dict[str, ob
     out_dir.mkdir(parents=True, exist_ok=True)
     changes.to_csv(out_dir / "roll_vs_control.csv")
     dropped.to_csv(out_dir / "dropped_days.csv", index=False)
+    plot_roll_vs_control(changes, out_dir / "figures" / "roll_vs_control.png")
     results: Dict[str, object] = {
         "roll_vs_control": changes, "dropped_days": dropped, "early_drop_share": share,
     }
