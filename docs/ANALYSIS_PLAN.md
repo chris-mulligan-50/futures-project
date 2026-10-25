@@ -41,7 +41,7 @@ the two Fridays enter the statistic, which is what decision 5's rule covers.
 
 | # | Decision | Proposal | Why |
 |---|---|---|---|
-| 1 | Roll and control windows | Roll window: last full Mon-Fri week before expiry. Control: same pattern 4 weeks earlier, same pair. As implemented in `windows.py`. | Fixed rule known in advance. Listed-spread volume peaks on the roll week's Wednesday and 80-87% of it trades in that week, only 0-1% in the control week (#42, exploratory rolls, volume only). Listed-spread volume is the right measure because spread trades do not appear as a separate cleared volume (Class 2, `calendars.ipynb`). Known bias: 7-17% of spread volume trades in the week before, mostly before the baseline snapshot, so part of any roll effect may already be in the baseline. This biases H1 toward finding no effect; we accept that rather than widen the window after seeing data. |
+| 1 | Roll and control windows | Roll window: last full Mon-Fri week before expiry. Control: same pattern 4 weeks earlier, same pair. As implemented in `windows.py`. | Fixed rule known in advance. Listed-spread volume peaks on the roll week's Wednesday and 80-87% of it trades in that week, only 0-1% in the control week (#42, exploratory rolls, volume only). Listed-spread volume is the right measure because spread trades do not appear as a separate cleared volume (Class 2, `calendars.ipynb`). Known bias: 7-17% of spread volume trades in the week before, mostly before the baseline snapshot, so part of any roll effect may already be in the baseline. This biases H1 toward finding no effect; we accept that rather than widen the window after seeing data. Edge case: 6EM3 expired on Friday 2023-06-16 (Juneteenth, #54), so its roll window is June 5-9, a week before its volume crossover. We keep the rule for it, which also biases H1 toward no effect. |
 | 2 | Number of control windows | One per roll for the main test. | Matches the README and keeps the comparison one paired difference per roll; the multiple-windows issue was closed (#33). #47 found the control-week deferred is quoted wider (decision 11), but earlier control weeks would be thinner still, so adding them would not help. |
 | 3 | Snapshot time | 10:00 America/Chicago, each weekday. | A fixed local time keeps snapshots comparable across days. Quotes were fresh for both legs on every day of the Sep 2026 roll and control windows (#45, quality only). Follows daylight saving. Not yet tested against intraday volume, so alternatives can be compared on drop rate only. |
 | 4 | Quote-age limit | 5 minutes, measured from the last `bbo-1m` row, not `ts_event`. | `ts_event` is the last trade and can be hours old while quotes are live (#44). Confirm the drop rate with the data-quality log (#24) on the exploratory rolls before the main test. |
@@ -71,7 +71,7 @@ Comment in #12 to sign off; tick here once done.
 - [ ] Chris Mulligan
 - [ ] Sidharth Saha
 - [x] Shreya Enaganti
-- [ ] Gonzalo Romero
+- [x] Gonzalo Romero
 
 ## Deviation log
 
