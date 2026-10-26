@@ -8,7 +8,7 @@ from euro_roll import analyze, cache, config, meetings
 from euro_roll.analyze import quote_range, run
 from euro_roll.expiries import roll_calendar
 from euro_roll.spread import TICK, session_open, snapshot_time
-from euro_roll.windows import roll_window, select_windows
+from euro_roll.windows import control_window, roll_window, select_windows
 
 FRONT_BID = 1.1
 
@@ -150,3 +150,25 @@ def test_main_shows_cost_and_downloads_nothing_by_default(monkeypatch, tmp_path,
     assert "8 rolls, estimated cost of uncached requests: $0.16" in capsys.readouterr().out
     analyze.main(["--all"])
     assert "65 rolls, estimated cost of uncached requests: $1.30" in capsys.readouterr().out
+
+
+def test_control_offset_moves_the_control_window_and_the_output_folder(monkeypatch, tmp_path):
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path)
+    client = SimpleNamespace(metadata=SimpleNamespace(get_cost=lambda **params: 0.0))
+    monkeypatch.setattr(analyze, "get_client", lambda: client)
+    monkeypatch.setattr(analyze, "load_rates", fake_rates)
+    calls = []
+
+    class Stop(Exception):
+        pass
+
+    def capture(rolls, fetch, rates, out_dir):
+        calls.append((rolls, out_dir))
+        raise Stop
+
+    monkeypatch.setattr(analyze, "run", capture)
+    with pytest.raises(Stop):
+        analyze.main(["--download", "--control-offset", "2"])
+    rolls, out_dir = calls[0]
+    assert out_dir == analyze.OUTPUTS / "control_offset_2"
+    assert all(r.control == control_window(r.expiry, 2) for r in rolls)

@@ -38,6 +38,10 @@ once the plan is tagged ``plan-v1``:
     PYTHONPATH=src python -m euro_roll.analyze              # 8 exploratory rolls
     PYTHONPATH=src python -m euro_roll.analyze --all        # all 65 rolls
     PYTHONPATH=src python -m euro_roll.analyze --all --download
+
+``--control-offset WEEKS`` moves the control window (default 4, the plan's)
+and writes to ``outputs/control_offset_<WEEKS>/`` instead. A robustness
+check added after the plan (#30), not part of the main test.
 """
 from __future__ import annotations
 
@@ -62,7 +66,7 @@ from euro_roll.meetings import meeting_table, overlap
 from euro_roll.rates import load_rates
 from euro_roll.spread import daily_spreads, session_open, snapshot_time
 from euro_roll.stats import summarize
-from euro_roll.windows import RollWindows, Window, select_windows
+from euro_roll.windows import CONTROL_OFFSET_WEEKS, RollWindows, Window, select_windows
 
 OUTPUTS = cache.REPO_ROOT / "outputs"
 FALLBACK_FIRST_EXPIRY = date(2017, 6, 1)  # decision 10
@@ -224,13 +228,15 @@ def main(argv=None):
                         help="all 65 rolls, not only the 8 exploratory ones")
     parser.add_argument("--download", action="store_true",
                         help="download after showing the cost (default: cost only)")
+    parser.add_argument("--control-offset", type=int, default=CONTROL_OFFSET_WEEKS, metavar="WEEKS",
+                        help="weeks from the control to the roll window (default: %(default)s)")
     args = parser.parse_args(argv)
 
     calendar = roll_calendar(2010, 2026)
     pairs = config.exploratory(calendar)
     if args.all:
         pairs = config.main_test(calendar) + pairs
-    rolls = select_windows(pairs)
+    rolls = select_windows(pairs, args.control_offset)
 
     client = get_client()
     cost = 0.0
@@ -245,8 +251,11 @@ def main(argv=None):
         return
 
     fetch = lambda symbols, start, end: fetch_bbo_1m(symbols, start, end, client)
-    results = run(rolls, fetch, load_rates())
-    print(f"\nWrote {OUTPUTS}")
+    out_dir = OUTPUTS
+    if args.control_offset != CONTROL_OFFSET_WEEKS:
+        out_dir = OUTPUTS / f"control_offset_{args.control_offset}"
+    results = run(rolls, fetch, load_rates(), out_dir)
+    print(f"\nWrote {out_dir}")
     print(f"Pre-2017-06 drop share (decision 10): {results['early_drop_share']:.1%}")
     print(f"\nWindows with an FOMC or ECB decision (decision 7):\n{results['meetings']}")
     h1 = results["stats"].xs("h1", level="test")
