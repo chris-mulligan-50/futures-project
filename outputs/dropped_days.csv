@@ -1,0 +1,8 @@
+expiry,window,day,reason
+2010-09-13,roll,2010-09-06,holiday
+2014-06-16,roll,2014-06-12,"front stale, deferred stale"
+2014-06-16,roll,2014-06-13,"front stale, deferred stale"
+2015-09-14,roll,2015-09-07,holiday
+2020-09-14,roll,2020-09-07,holiday
+2021-09-13,roll,2021-09-06,holiday
+2026-09-14,roll,2026-09-07,holiday
