@@ -69,7 +69,7 @@ the two Fridays enter the statistic, which is what decision 5's rule covers.
 Comment in #12 to sign off; tick here once done.
 
 - [ ] Chris Mulligan
-- [ ] Sidharth Saha
+- [x] Sidharth Saha
 - [x] Shreya Enaganti
 - [x] Gonzalo Romero
 
@@ -77,4 +77,21 @@ Comment in #12 to sign off; tick here once done.
 
 Changes after this plan is frozen. Date, what changed, why.
 
-(none yet)
+- **2026-10-25, timing.** The main test ran before Chris's sign-off and
+  before the `plan-v1` tag, to meet the 2026-10-27 deadline. The decisions
+  above are as three of four members signed them; the items below were
+  settled before the main-test results were seen.
+- **2026-10-25, decision 7.** In the paired test a window cannot be dropped
+  alone, so `no_meetings` drops a roll if either of its windows contains a
+  decision. A decision counts if it was announced between the window's two
+  snapshots. Decisions are every scheduled FOMC and ECB monetary-policy
+  meeting plus unscheduled ones that changed a policy rate
+  (`euro_roll/meetings.py`).
+- **2026-10-25, decision 9.** The block interval needs at least one block,
+  so it is left empty for a subset of fewer than four rolls. Only the
+  exploratory `no_meetings` subset (3 rolls) is affected.
+- **2026-10-25, added check.** Control windows two and three weeks before
+  the roll window instead of four (`--control-offset`, #30), because
+  decision 11 expects the thin four-week control to bias H1 toward no
+  effect. Reported as a robustness check, not as the main test. One week
+  is not used: 7-17% of spread volume already trades then (decision 1).
