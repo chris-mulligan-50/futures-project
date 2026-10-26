@@ -69,6 +69,8 @@ def wilcoxon_test(x, n_resamples: int = N_RESAMPLES, seed: int = SEED) -> float:
     nonzero = x[x != 0]
     if len(nonzero) == 0:
         return np.nan
+    if len(nonzero) == 1:
+        return 1.0  # both signs are equally extreme; scipy needs two values
     method = PermutationMethod(n_resamples=n_resamples, rng=seed)
     return float(wilcoxon(nonzero, method=method).pvalue)
 
@@ -113,7 +115,8 @@ def _counts_and_sign_test(x: np.ndarray) -> Dict[str, float]:
 
 def _mean_and_intervals(x: np.ndarray) -> Dict[str, float]:
     low, high = bootstrap_ci(x)
-    block_low, block_high = bootstrap_ci(x, block=BLOCK_ROLLS)
+    # Fewer rolls than one block leave nothing to resample in blocks.
+    block_low, block_high = bootstrap_ci(x, block=BLOCK_ROLLS) if len(x) >= BLOCK_ROLLS else (np.nan, np.nan)
     return {
         "mean": float(x.mean()),
         "ci_low": low,

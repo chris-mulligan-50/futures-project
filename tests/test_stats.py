@@ -96,6 +96,11 @@ def test_all_zero_gives_nan():
     assert np.isnan(wilcoxon_test([0.0, 0.0, 0.0]))
 
 
+def test_one_nonzero_value_gives_p_one():
+    # One value has two sign patterns, equally extreme, as in the sign test.
+    assert wilcoxon_test([0.0, 1.5, 0.0]) == sign_test([0.0, 1.5, 0.0]) == 1.0
+
+
 def test_tests_hold_size_under_the_null():
     # Roll and control changes from the same distribution, on the tick grid
     # so ties and zeros occur as in real data. About 5% of nominal 5% tests
@@ -206,6 +211,15 @@ def test_summarize_reports_both_planned_intervals():
         assert tuple(out.loc[row, ["ci_low", "ci_high"]]) == bootstrap_ci(x)
         assert tuple(out.loc[row, ["block_ci_low", "block_ci_high"]]) == bootstrap_ci(x, block=4)
         assert out.loc[row, "lag1_autocorr"] == pytest.approx(np.corrcoef(x[:-1], x[1:])[0, 1])
+
+
+def test_summarize_leaves_the_block_interval_empty_below_one_block():
+    # A subset can have fewer rolls than one block, e.g. the exploratory
+    # rolls without a Fed or ECB decision (decision 7).
+    out = summarize(changes([1.0, -2.0, 3.0], [0.0, 0.5, -1.0]))  # d = 1, 1.5, 2
+    assert (out.loc["h1", "n"], out.loc["h1", "mean"]) == (3, 1.5)
+    assert out.loc["h1", ["ci_low", "ci_high"]].notna().all()
+    assert out.loc["h1", ["block_ci_low", "block_ci_high"]].isna().all()
 
 
 def test_summarize_counts_rises_falls_and_zeros():
