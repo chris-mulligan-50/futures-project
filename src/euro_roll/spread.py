@@ -4,12 +4,14 @@ For each requested day, take each contract's best bid and ask in force at
 10:00 America/Chicago, compute midpoints, and report the deferred midpoint
 minus the front midpoint in ticks (one 6E tick is 0.00005 USD per EUR).
 
-Input is ``bbo-1m`` data as returned by ``fetch_bbo_1m``. In that schema a
-row is published only for minutes in which the book changed, and
-``ts_recv`` is the end of the minute. So the quote in force at 10:00 is the
-latest row at or before 10:00, and its age is the time since that row.
-``ts_event`` is the time of the last trade, not of the last quote, so it is
-not used for quote age.
+Input is ``bbo-1m`` data as returned by ``fetch_bbo_1m``. ``ts_recv`` is
+the end of each minute, so the quote in force at 10:00 is the latest row at
+or before 10:00, and its age is the time since that row. In this data a row
+appears in almost every minute of the session, including minutes in which
+the book did not change, so the age limit catches feed gaps rather than an
+unchanged book. (At every snapshot the main test uses, the bid or ask had
+changed within the previous 3 minutes.) ``ts_event`` is the time of the
+last trade, not of the last quote, so it is not used for quote age.
 
 Each contract's quote at the snapshot gets a status:
 
@@ -27,8 +29,8 @@ trades a short session whose trades are booked to the next day, so the day
 is not comparable. Dropped days stay in the output with their reason, for
 the data-quality log (Task 18, issue #24).
 
-``SNAPSHOT_TIME`` and ``MAX_QUOTE_AGE`` are provisional until the method
-decision (Task 6, issue #12) settles them; both can be passed explicitly.
+``SNAPSHOT_TIME`` and ``MAX_QUOTE_AGE`` are decisions 3 and 4 of the plan;
+both can be passed explicitly.
 """
 from __future__ import annotations
 
@@ -51,8 +53,8 @@ from pandas.tseries.holiday import (
 
 TICK = 0.00005
 TIMEZONE = "America/Chicago"
-SNAPSHOT_TIME = time(10, 0)  # provisional (Task 6)
-MAX_QUOTE_AGE = pd.Timedelta(minutes=5)  # provisional (Task 6)
+SNAPSHOT_TIME = time(10, 0)  # decision 3
+MAX_QUOTE_AGE = pd.Timedelta(minutes=5)  # decision 4
 SESSION_OPEN = time(17, 0)  # CME Globex opens 17:00 Chicago the day before
 
 LEG_COLUMNS = ["bid", "ask", "age", "status"]
