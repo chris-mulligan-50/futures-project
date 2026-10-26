@@ -48,7 +48,8 @@ from typing import Dict, Iterable, List, Tuple
 
 import pandas as pd
 
-from euro_roll import cache
+from euro_roll import cache, config
+from euro_roll.changes import KINDS
 from euro_roll.client import get_client
 from euro_roll.download import fetch, request_params
 from euro_roll.expiries import roll_calendar
@@ -58,17 +59,11 @@ from euro_roll.spread import (
 )
 from euro_roll.windows import RollWindows, Window, select_windows
 
-KINDS = ("roll", "control")
 MEASURES = [
     "deferred_volume", "deferred_share", "width_ticks", "max_width_ticks",
     "snapshots", "deferred_ok", "valid", "dropped",
 ]
 
-# Rolls checked by the script. Matches the split proposed in
-# ``euro_roll/config.py`` (#50); switch to it once that is merged.
-FIRST_EXPIRY = date(2010, 7, 1)  # Databento GLBX.MDP3 starts 2010-06-06
-EXPLORATORY_FIRST_EXPIRY = date(2024, 12, 1)
-LAST_EXPIRY = date(2026, 9, 30)
 OUTPUT = cache.REPO_ROOT / "outputs" / "control_liquidity.csv"
 
 
@@ -212,8 +207,10 @@ def _summary(table: pd.DataFrame) -> str:
 
 
 def _rolls(all_rolls: bool) -> List[RollWindows]:
-    first = FIRST_EXPIRY if all_rolls else EXPLORATORY_FIRST_EXPIRY
-    pairs = [p for p in roll_calendar(2010, 2026) if first <= p[2] <= LAST_EXPIRY]
+    calendar = roll_calendar(2010, 2026)
+    pairs = config.exploratory(calendar)
+    if all_rolls:
+        pairs = config.main_test(calendar) + pairs
     return select_windows(pairs)
 
 
@@ -256,7 +253,7 @@ def main(argv=None):
 
     with pd.option_context("display.width", 120, "display.float_format", "{:.3f}".format):
         print(f"\nWrote {OUTPUT}")
-        main_test = table.index < EXPLORATORY_FIRST_EXPIRY
+        main_test = table.index < config.EXPLORATORY_FIRST_EXPIRY
         for name, rows in [("Main-test rolls", main_test), ("Exploratory rolls", ~main_test)]:
             if rows.any():
                 print(f"\n{name}:\n{_summary(table[rows])}")
