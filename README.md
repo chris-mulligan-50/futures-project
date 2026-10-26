@@ -1,256 +1,135 @@
 # Euro FX Futures Roll Pressure
 FINM 37000 — Futures and Related Derivatives
 
-## Research Question
+**Do Euro FX calendar spreads move more in quarterly roll weeks than in comparable normal weeks?**
 
-Do Euro FX futures calendar spreads move more during quarterly roll
-weeks than during comparable non-roll weeks?
+## Result
 
-CME Euro FX futures (`6E`) expire every March, June, September, and
-December. Anyone keeping a position, such as a fund hedging euro
-exposure, must **roll** it: close the expiring (front) contract and
-open the next (deferred) one. Because the contract calendar fixes the
-timing, much of that volume lands in the same few days each quarter, and
-other traders can anticipate it. If that crowding pushes the price of
-switching against rollers, they pay a cost that appears on no fee schedule.
+We found **no evidence of a roll-week effect**. On the 57 held-out rolls
+(September 2010 to September 2024), the spread moved slightly more in roll
+weeks than in control weeks, but the difference is well within noise.
 
-We define the **calendar spread** as the deferred (second quarterly)
-contract's price minus the front contract's price. Our main test
-compares spread changes in roll windows with matched control windows.
-As an additional check, we examine whether those changes reverse before
-the front contract expires.
+| Test (57 rolls, ticks) | Estimate | 95% interval | p (sign / Wilcoxon) |
+|---|---|---|---|
+| H1: \|roll move\| − \|control move\|, mean per roll | +0.52 | −0.96 to +2.19 | 0.89 / 0.37 |
+| H2: roll weeks where the spread rose | 24 of 50 | | 0.89 |
+| H2: roll move − control move, mean | −0.45 | −2.30 to +1.64 | |
 
-## Hypotheses
+Mean absolute net move: 3.22 ticks in roll weeks, 2.70 in control weeks. One
+tick is USD 6.25 per contract. H3, the dollar cost of rolling, is not
+computed because H1 and H2 do not hold.
 
-Stated before the full test is run.
+![Roll and control change per roll](outputs/figures/roll_vs_control.png)
 
-- **H1 (magnitude):** The absolute change in the calendar spread is
-  larger in roll windows than in matched control windows.
-- **H2 (direction):** We examine whether the spread systematically rises
-  or falls in roll windows. A rise makes rolling less favorable for long
-  positions; a fall makes it less favorable for short positions.
-  Without evidence of which side dominates rolling, we will not interpret
-  a directional move as a cost to funds collectively. Optional CFTC
-  Traders in Financial Futures (TFF) positioning, used only as of its
-  publication date to avoid look-ahead, could identify the dominant side.
-- **H3 (cost, only if H1 and H2 hold):** Convert the average excess move
-  into a dollar cost per contract rolled. For reference, one 6E tick is
-  0.00005 USD per EUR, or USD 6.25 per 125,000 EUR contract.
+The result survives every sensitivity check in the plan: dropping rolls with
+wide quotes (34 rolls), dropping rolls with a Fed or ECB decision in either
+window (27 rolls), and two carry adjustments using observed USD and EUR
+rates. The 8 recent rolls, where the idea came from, are exploratory and also
+show nothing (−0.88, interval −2.44 to +0.38). Full output is in
+[outputs/stats.csv](outputs/stats.csv).
 
-## Preliminary Observation (motivation only, not a result)
+**This is weaker than "no effect".** The control week sits about five weeks
+before expiry, where the deferred contract trades 1 to 2% of its roll-week
+volume and is quoted about twice as wide. That makes control moves noisier
+and biases the test toward finding nothing. In simulation
+([outputs/power.csv](outputs/power.csv)), a roll-week move 1.5 times the
+control's is detected only 29 to 43% of the time, and a move twice as large
+68 to 85%.
 
-A quick check of the last eight quarterly rolls (December 2024 through
-September 2026) found the spread rose in all eight roll weeks, while in
-comparable normal weeks it moved both ways. This check has not yet been
-reproduced in the pipeline. We treat it as motivation:
+## What else we found
 
-1. The idea came from looking at these same rolls, so they cannot also
-   serve as the test. The main test will use earlier rolls (Databento
-   GLBX.MDP3 history goes back to 2010, roughly 60 rolls), with the exact
-   range set after verifying coverage and download costs. The recent
-   eight will be reported separately as exploratory analysis.
-2. A 6E calendar spread mostly reflects the USD–EUR interest-rate
-   differential (carry), so Fed or ECB decisions can move it regardless
-   of any roll.
-3. Eight observations is a small sample.
+- **Rolling is concentrated.** In the 8 recent rolls, 80 to 87% of the listed
+  calendar spread's volume trades in the roll week and 0 to 1% in the control
+  week. Outright volume crosses over later, 3 days before expiry in 63 of 65
+  rolls, about two days after spread trading peaks.
+- **Central-bank meetings line up with rolls.** A Fed or ECB decision falls
+  inside 29 of 57 roll windows but only 1 control window
+  ([outputs/meetings.csv](outputs/meetings.csv)), so they cannot be ignored.
+  The no-meetings check above handles this.
+- **Expiries.** The rule "two business days before the third Wednesday"
+  matches Databento's contract definitions for 64 of 65 contracts. The
+  exception, June 2023, expired a day early for Juneteenth, which the roll
+  calendar now handles.
+- **Data quality.** Across all 65 rolls only 7 snapshot days were dropped:
+  5 CME holidays and 2 days in June 2014 with no quotes
+  ([outputs/dropped_days.csv](outputs/dropped_days.csv)). That is far below
+  the plan's 20% threshold for falling back to a shorter sample.
 
-## Data and Sample
+## Method
 
-We will use Databento `GLBX.MDP3` data for individual quarterly 6E contracts:
+Each roll is a front and deferred contract pair. The spread is the deferred
+midpoint minus the front midpoint, in ticks, from the best bid and offer at
+10:00 America/Chicago ([Databento](docs/DATABENTO_REFERENCE.md) `bbo-1m`
+data). The roll window is the last full Monday to Friday week before the
+front contract expires; the control window is the same pattern four weeks
+earlier. Each window's net change runs from the preceding Friday's snapshot
+to its ending Friday's. The test statistic is one number per roll, and the
+unit of analysis is the roll, not the minute.
 
-| Dataset / schema | Contents | Use |
-|---|---|---|
-| `ohlcv-1d` | Daily bars per named contract | Volume migration from front to deferred |
-| `bbo-1m` (or `trades`) | Best bid/offer per minute | Midpoints for both contracts at a common time |
-| `definition` | Contract specs and expirations | Expiry dates and contract pairs; optionally the listed spread's own quotes |
-| CFTC TFF reports (optional) | Weekly positioning by trader type | Dominant roll direction (H2) |
+The full list of decisions (quote-age limit, holidays, missing data,
+bootstrap method, held-out split) is in
+[docs/ANALYSIS_PLAN.md](docs/ANALYSIS_PLAN.md), with every change after the
+results logged at the bottom. **We ran the main test before the plan was
+signed off by all four members and before tagging it**, to meet the
+deadline; the deviation log records this.
 
-- We use **named contracts** (for example `6EU6`, `6EZ6`), not continuous
-  series, so no return is computed across a contract switch.
-- Missing or stale quotes and flagged data-quality dates will be documented.
-- The project must run without CFTC data; H2 then reduces to describing
-  the direction of the average move.
-- An earlier pilot quoted these requests at USD 0 on one team account.
-  This may not hold for every account, so the pipeline will include a
-  small, cheap sample mode and show estimated cost before downloading.
-- API keys and raw vendor data are never committed.
-  See [docs/DATABENTO_REFERENCE.md](docs/DATABENTO_REFERENCE.md).
+## Limits
 
-## Proposed Method 
+- Calendar spreads mostly reflect the USD–EUR interest-rate gap, and we
+  cannot show who pays for rolling or that rolling caused any move.
+- Two checks were added after the plan and are labelled as such: control
+  weeks 2 and 3 weeks out, and the power simulation. At 3 weeks the
+  percentile interval includes zero (−0.21 to +2.78) while the block
+  bootstrap interval just excludes it (+0.04 to +2.46), so we treat that
+  check as inconclusive.
+- A reversal check before expiry, other currencies, and CFTC positioning were
+  cut for time.
 
-The team will finalize the window definitions, observation time,
-quote-quality rules, and statistical approach before examining the
-historical test results. Each member signs off in the method decision
-Issue.
-
-1. **Roll calendar.** Get each front contract's last trading day from
-   Databento definitions (for 6E, two business days before the third
-   Wednesday of the contract month) and pair it with the next quarterly
-   contract.
-2. **Select windows.** The roll window is the last full Monday–Friday
-   week before the front contract expires. This fixed rule is known in
-   advance and is the main test. The control window is the same weekday
-   pattern four weeks earlier, for the same contract pair. The days
-   around the observed volume crossover are reported descriptively only.
-3. **Measure spreads.** Observe both contracts' bid and ask at
-   10:00 a.m. America/Chicago each weekday. Compute each midpoint and
-   subtract the front midpoint from the deferred midpoint, reported in
-   ticks. Apply a consistent quote-age limit and reject missing or
-   stale observations.
-4. **Compare changes.** Measure each window's net change from the
-   preceding Friday's snapshot to its ending Friday's snapshot. Compare
-   absolute roll and control changes for magnitude, and report signed
-   changes separately.
-5. **Summarize results.** Report one paired comparison per roll. Test
-   the magnitude differences with a sign test and a Wilcoxon signed-rank
-   test, and give a bootstrap confidence interval for their mean.
-   Consecutive rolls may share rate regimes, so a block bootstrap over a
-   year of rolls is reported alongside; both intervals are fixed in
-   advance. We do not count minute rows as independent tests.
-6. **Check sensitivity.** Repeat with alternative window lengths and
-   offsets, excluding pairs where either window contains a scheduled Fed
-   or ECB policy decision, and excluding rolls with wide quotes.
-
-### Method Decisions
-
-The open decisions (control windows, snapshot time, quote-age limit,
-missing data, holidays, Fed/ECB meetings, carry and rates, confidence
-intervals, held-out split, wide quotes) are settled in
-[docs/ANALYSIS_PLAN.md](docs/ANALYSIS_PLAN.md). It is frozen before the
-main test runs, and any later change goes in its deviation log.
-
-## Deliverables and Scope
-
-We will produce:
-- A reproducible pipeline for downloading data and comparing windows.
-- Tables and figures showing spread changes for each roll and control
-  pair (planned: `outputs/roll_vs_control.csv`,
-  `outputs/figures/roll_vs_control.png`).
-- A short report (`outputs/report.md`) explaining findings, uncertainty,
-  and robustness checks.
-
-**In scope:** one market (Euro FX, 6E), quarterly rolls, the pipeline,
-and the report.
-
-**Out of scope for now (reopen only if the main pipeline finishes early):**
-CFTC positioning, other currencies (6J, 6B), a trading strategy that
-front-runs the roll, a reversal check before expiry, and a detailed
-interest-rate model. Only the simple carry formula with observed rates is
-in scope.
-
-**Limitations.** Spread changes also reflect interest-rate expectations
-and other market conditions. The analysis can identify patterns
-consistent with roll pressure, but cannot establish actual costs paid by
-funds or prove that rolling caused those movements. The control week sits
-further from expiry, where the deferred contract is quoted more widely, so
-control-week midpoints are noisier. That biases the magnitude test toward
-finding no effect, and excluding wide quotes does not fully remove it.
-
-## Task Roadmap
-
-Each task is tracked as a GitHub Issue with an owner, dependencies, and
-completion criteria. After the professor's check-in the list was cut to
-what fits the remaining time; closed issues say where their content went.
-
-| Task | Issue | Depends on |
-|---|---|---|
-| Roll calendar: expiries per quarter, holiday handling, volume-share table and chart | #10 | — |
-| Spread construction: fixed-time snapshots, deferred minus front in ticks | #11 | — |
-| Method decision: open decisions, analysis plan, held-out split; team sign-off | #12 | — |
-| Fed/ECB calendar, overlap table, and simple carry formula | #16 | #48 |
-| Statistics: sign and Wilcoxon tests | #28 | #10, #11 |
-| Statistics: bootstrap CI, rates as a control | #29 | #28, #48 |
-| Robustness: alternative window lengths and offsets | #30 | #28 |
-| Control-window liquidity check | #47 | #10, #11 |
-| USD and EUR short-rate data | #48 | — |
-| Data-quality log: flagged and dropped observations | #24 | #11 |
-| Sample mode and cost preview before download | #27 | — |
-| CLI: `download` and `analyze` | #21 | — |
-| Figures, tables, and final report | #19 | #28, #29, #30 |
-
-Done: repo setup, data coverage and cost check, downloader, cache, window
-selection, test fixtures and CI.
-
-## How to Run
-
-The full analysis pipeline is not yet implemented. The available
-notebook explores volume migration across the eight recent rolls.
+## Reproduce
 
 ```bash
 git clone https://github.com/chris-mulligan-50/futures-project.git
 cd futures-project
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+export DATABENTO_API_KEY="your-key"                 # never commit it
 ```
-
-Set your Databento key in the environment; never commit it:
 
 ```bash
-export DATABENTO_API_KEY="your-key"      # Windows PowerShell: $env:DATABENTO_API_KEY="your-key"
+PYTHONPATH=src python -m euro_roll.analyze --all             # cost preview only
+PYTHONPATH=src python -m euro_roll.analyze --all --download  # runs the test, writes outputs/
+PYTHONPATH=src python -m euro_roll.power                     # reads outputs/, no download
+python -m pytest                                             # no key or network needed
 ```
 
-Data fetched through `euro_roll.download` is cached under `data/databento/`
-(git-ignored), so repeating a request reads from disk and is not billed
-again. Delete a file there to download it fresh.
+The first download takes about 45 minutes. Requests are cached under
+`data/databento/` (git-ignored), so repeating one is free. Databento quotes
+differ by account, so check the preview before downloading.
 
-Open `notebooks/roll_volume_exploration.ipynb` in VS Code or Jupyter,
-select this environment, and run the cells in order. Review the
-estimated cost before downloading.
-
-**Planned interface (not yet built):**
-
-```bash
-python -m euro_roll download --sample    # small, cheap sample run
-python -m euro_roll download --start 2010-01-01 --end 2026-09-30
-python -m euro_roll analyze              # writes outputs/
-```
-
-### Running the tests
-
-```bash
-python -m pytest
-```
-
-The tests need no API key or network: Databento is replaced by fakes, and
-`tests/synthetic.py` provides fake 6E quotes and daily bars (contents are
-documented at the top of that file, and available to any test through the
-fixtures in `tests/conftest.py`). GitHub Actions runs the same command on
-every pull request, on Linux and Windows.
-
-### Planned repository layout
+## Repository
 
 ```
-src/euro_roll/   download, expiries, spread, windows, stats, report
-tests/           synthetic tests for roll dates, window selection, spread sign
-data/            local cache (git-ignored; vendor data is not committed)
-outputs/         generated tables and figures
-notebooks/       exploration only; final results come from the scripts
-docs/            reference material
+src/euro_roll/   download, cache, expiries, windows, spread, changes, stats,
+                 meetings, carry, rates, liquidity, analyze, power
+tests/           synthetic-data tests; GitHub Actions runs them on Linux and Windows
+outputs/         results: stats.csv, roll_vs_control.csv, figures, robustness runs
+docs/            analysis plan, Databento reference, project slides
+notebooks/       exploration only
 ```
 
-## Team and Workflow
+## Team
 
-- **Tech Lead:** Chris Mulligan (owns the main repository)
-- **Communication Lead:** Sidharth Saha
-- **Design Leads:** Shreya Enaganti and Gonzalo Romero
+Chris Mulligan (Tech Lead), Sidharth Saha (Communication Lead), Shreya
+Enaganti and Gonzalo Romero (Design Leads). Work happens on branches and is
+merged by pull request, with every member reviewing every PR.
 
-This plan builds on Gonzalo's original draft. Work happens on a branch
-and is merged to `main` by pull request; every team member reviews
-every PR, and the Tech Lead merges once the team agrees.
+## Related work
 
-## Related Work
-
-- Mou (2010, revised 2011) finds price pressure associated with
-  predictable commodity-index rolls.
+- Mou (2010): price pressure around predictable commodity-index rolls.
   [Front-Running the Goldman Roll](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1716841)
-- Irwin, Sanders, and Yan (2023) find that commodity roll effects
-  disappeared in their 2012–2019 sample, suggesting concentrated rolling
-  does not necessarily impose additional costs.
+- Irwin, Sanders and Yan (2023): commodity roll effects disappeared in
+  2012–2019.
   [The Order Flow Cost of Index Rolling](https://experts.illinois.edu/en/publications/the-order-flow-cost-of-index-rolling-in-commodity-futures-markets/)
-- CME's September 2022 FX roll analysis documents concentrated activity
-  in the week before expiry alongside substantial liquidity.
+- CME (2022): FX roll activity concentrates in the week before expiry
+  alongside substantial liquidity.
   [Roll(ing) with it](https://www.cmegroup.com/articles/2022/price-discovery-complementary-liquidity-to-roll-forward-fx-risk.html)
-
-These studies motivate testing for roll pressure in Euro FX without
-assuming the effect exists.
