@@ -16,12 +16,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from euro_roll import config
 from euro_roll.expiries import RollPair, roll_calendar
 
 LOOKBACK_DAYS = 60  # calendar days before expiry
-# Rolls with Databento data, as in the analysis plan split (config.py in #50).
-FIRST_EXPIRY = date(2010, 7, 1)
-LAST_EXPIRY = date(2026, 9, 30)
 
 
 def roll_volume_share(
@@ -118,7 +116,7 @@ def main(start_year: int = 2010, end_year: int = 2026, out_dir: str = "outputs")
 
     rolls = [
         r for r in roll_calendar(start_year, end_year)
-        if FIRST_EXPIRY <= r[2] <= LAST_EXPIRY
+        if config.FIRST_EXPIRY <= r[2] <= config.LAST_EXPIRY
     ]
     tables = build_tables(rolls, fetch_daily_bars)
     out = Path(out_dir)
