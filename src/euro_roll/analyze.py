@@ -32,8 +32,7 @@ before 2017-06 are dropped (holidays aside), the main test starts at the
 2017-06 roll instead. Only dropped days decide this, not spread changes.
 
 Run on real data (shows the estimated cost and downloads nothing unless
-``--download`` is given; cached requests cost nothing). Run ``--all`` only
-once the plan is tagged ``plan-v1``:
+``--download`` is given; cached requests cost nothing):
 
     PYTHONPATH=src python -m euro_roll.analyze              # 8 exploratory rolls
     PYTHONPATH=src python -m euro_roll.analyze --all        # all 65 rolls

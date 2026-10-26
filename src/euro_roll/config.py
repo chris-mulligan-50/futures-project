@@ -3,7 +3,7 @@
 One place for the split, so no module picks its own date range. A roll is
 identified by its front contract's expiry date, as in ``expiries.roll_calendar``.
 
-PROPOSED, pending team sign-off in #12; see ``docs/ANALYSIS_PLAN.md``.
+Decision 10 of ``docs/ANALYSIS_PLAN.md``.
 """
 from __future__ import annotations
 

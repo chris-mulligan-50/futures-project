@@ -1,8 +1,8 @@
 # Analysis Plan (Task 6, issue #12)
 
-**Status: PROPOSED.** Nothing here is final until every member signs off in
-#12. Once signed off, this file is committed and tagged `plan-v1` before the
-main test runs on the held-out rolls. After that, any change goes in the
+**Status: in use.** Signed off by three of four members in #12; the main
+test ran on 2026-10-25, before the fourth sign-off and without the planned
+`plan-v1` tag (see the deviation log). Any change after that run goes in the
 deviation log below with a reason.
 
 The proposals use only design reasoning and data-quality evidence (volume,
@@ -98,3 +98,8 @@ Changes after this plan is frozen. Date, what changed, why.
   is not used: 7-17% of spread volume already trades then (decision 1).
   Decision 10's fallback is judged on the plan's windows in these runs too,
   so they keep the main test's sample.
+- **2026-10-26, after the results.** Added a power simulation
+  (`euro_roll/power.py`, `outputs/power.csv`) and descriptive checks of the
+  largest roll-week moves, at the suggestion of an independent review of the
+  results. They describe the design and the data, not the evidence for H1
+  or H2, and should be reported as done after the test.
