@@ -145,3 +145,8 @@ def test_script_shows_cost_without_downloading(monkeypatch, tmp_path, capsys):
     liquidity.main([])
     assert len(client.quoted) == 8 * 2 * 2  # 8 rolls, 2 windows, 2 schemas
     assert "8 rolls, estimated cost of uncached requests: $0.32" in capsys.readouterr().out
+
+
+def test_all_rolls_follow_the_config_split():
+    assert len(liquidity._rolls(True)) == 65
+    assert len(liquidity._rolls(False)) == 8

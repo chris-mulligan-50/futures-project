@@ -115,8 +115,10 @@ def _counts_and_sign_test(x: np.ndarray) -> Dict[str, float]:
 
 def _mean_and_intervals(x: np.ndarray) -> Dict[str, float]:
     low, high = bootstrap_ci(x)
-    # Fewer rolls than one block leave nothing to resample in blocks.
-    block_low, block_high = bootstrap_ci(x, block=BLOCK_ROLLS) if len(x) >= BLOCK_ROLLS else (np.nan, np.nan)
+    # Below two blocks every resample is one or two runs of the same rolls
+    # (with one block, a rotation with the same mean), so no usable interval.
+    enough = len(x) >= 2 * BLOCK_ROLLS
+    block_low, block_high = bootstrap_ci(x, block=BLOCK_ROLLS) if enough else (np.nan, np.nan)
     return {
         "mean": float(x.mean()),
         "ci_low": low,

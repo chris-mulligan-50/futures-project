@@ -83,8 +83,8 @@ def test_overlap_counts_windows_with_a_decision(monkeypatch):
     ])
     counts = overlap(meeting_table(changes))
     assert counts.to_dict("index") == {
-        "fomc": {"roll": 0, "control": 1, "rolls": 2},
-        "ecb": {"roll": 1, "control": 1, "rolls": 2},
-        "either": {"roll": 1, "control": 1, "rolls": 2},
+        "fomc": {"roll": 0, "control": 1, "roll_or_control": 1, "rolls": 2},
+        "ecb": {"roll": 1, "control": 1, "roll_or_control": 2, "rolls": 2},
+        "fomc_or_ecb": {"roll": 1, "control": 1, "roll_or_control": 2, "rolls": 2},
     }
 

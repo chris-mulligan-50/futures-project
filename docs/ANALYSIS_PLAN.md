@@ -87,11 +87,14 @@ Changes after this plan is frozen. Date, what changed, why.
   snapshots. Decisions are every scheduled FOMC and ECB monetary-policy
   meeting plus unscheduled ones that changed a policy rate
   (`euro_roll/meetings.py`).
-- **2026-10-25, decision 9.** The block interval needs at least one block,
-  so it is left empty for a subset of fewer than four rolls. Only the
-  exploratory `no_meetings` subset (3 rolls) is affected.
+- **2026-10-25, decision 9.** The block interval is left empty for a subset
+  of fewer than eight rolls (two blocks): with one block every resample is
+  a rotation of the same rolls, and with under two the interval is too
+  narrow. Only exploratory subsets can be that small.
 - **2026-10-25, added check.** Control windows two and three weeks before
   the roll window instead of four (`--control-offset`, #30), because
   decision 11 expects the thin four-week control to bias H1 toward no
   effect. Reported as a robustness check, not as the main test. One week
   is not used: 7-17% of spread volume already trades then (decision 1).
+  Decision 10's fallback is judged on the plan's windows in these runs too,
+  so they keep the main test's sample.

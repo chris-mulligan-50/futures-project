@@ -120,16 +120,20 @@ def meeting_table(changes: pd.DataFrame) -> pd.DataFrame:
 
 
 def overlap(table: pd.DataFrame) -> pd.DataFrame:
-    """Number of roll and control windows with an FOMC, ECB or either decision.
+    """Rolls with an FOMC, ECB or any decision, by window.
 
-    ``table`` is ``meeting_table`` output for the rolls to count; ``rolls``
-    is how many there are.
+    ``table`` is ``meeting_table`` output for the rolls to count. Rows are
+    ``fomc``, ``ecb`` and ``fomc_or_ecb``; columns count the rolls with
+    such a decision in the ``roll`` window, the ``control`` window, and
+    either (``roll_or_control``), out of ``rolls``. ``rolls`` minus the
+    ``fomc_or_ecb`` / ``roll_or_control`` cell is the ``no_meetings`` sample.
     """
-    counts = {}
+    has = {}
     for kind in KINDS:
-        has = {bank: table[f"{kind}_{bank}"].notna() for bank in BANKS}
-        has["either"] = pd.concat(has.values(), axis=1).any(axis=1)
-        counts[kind] = {bank: int(flags.sum()) for bank, flags in has.items()}
-    out = pd.DataFrame(counts)
+        has[kind] = {bank: table[f"{kind}_{bank}"].notna() for bank in BANKS}
+        has[kind]["fomc_or_ecb"] = pd.concat(has[kind].values(), axis=1).any(axis=1)
+    rows = has["roll"].keys()
+    out = pd.DataFrame({kind: [int(has[kind][r].sum()) for r in rows] for kind in KINDS}, index=list(rows))
+    out["roll_or_control"] = [int((has["roll"][r] | has["control"][r]).sum()) for r in rows]
     out["rolls"] = len(table)
     return out.rename_axis("bank")

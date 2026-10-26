@@ -48,7 +48,7 @@ from __future__ import annotations
 import argparse
 from datetime import date
 from pathlib import Path
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import matplotlib
 
@@ -166,14 +166,22 @@ def plot_roll_vs_control(changes: pd.DataFrame, path) -> Path:
     return path
 
 
-def run(rolls: List[RollWindows], fetch: Fetch, rates: pd.DataFrame, out_dir=OUTPUTS) -> Dict[str, object]:
+def run(
+    rolls: List[RollWindows],
+    fetch: Fetch,
+    rates: pd.DataFrame,
+    out_dir=OUTPUTS,
+    early_share: Optional[float] = None,
+) -> Dict[str, object]:
     """Compute everything for ``rolls`` and write it to ``out_dir``.
 
-    ``rates`` is ``rates.load_rates()`` output. Returns the tables written and
-    decision 10's drop share.
+    ``rates`` is ``rates.load_rates()`` output. ``early_share`` replaces
+    decision 10's drop share from ``rolls``, so a run with other control
+    windows keeps the main test's sample. Returns the tables written and
+    the drop share used.
     """
     spreads = {roll.expiry: roll_spreads(roll, fetch) for roll in rolls}
-    share = early_drop_share(rolls, spreads)
+    share = early_drop_share(rolls, spreads) if early_share is None else early_share
     changes = change_table(roll_changes(roll, spreads[roll.expiry]) for roll in rolls)
     decisions = meeting_table(changes)
     changes = changes.join(decisions)
@@ -199,7 +207,7 @@ def run(rolls: List[RollWindows], fetch: Fetch, rates: pd.DataFrame, out_dir=OUT
     for split, expiries in splits.items():
         for spec, table in specs.items():
             subset = table[table.index.isin(expiries)]
-            if len(subset):
+            if subset[["roll", "control"]].notna().all(axis=1).any():
                 stats[(split, spec)] = summarize(subset)
     stats = pd.concat(stats, names=["split", "spec", "test"])
     # Over the rolls the tests use: both changes present.
@@ -237,24 +245,26 @@ def main(argv=None):
     if args.all:
         pairs = config.main_test(calendar) + pairs
     rolls = select_windows(pairs, args.control_offset)
+    plan = select_windows(pairs)  # decision 10 is judged on the plan's windows
 
     client = get_client()
-    cost = 0.0
-    for roll in rolls:
+    requests = {}
+    for roll in rolls + plan:
         for kind in KINDS:
             params = request_params("bbo-1m", [roll.front, roll.deferred], *quote_range(getattr(roll, kind)))
-            if not cache.cache_path(params).exists():
-                cost += client.metadata.get_cost(**params)
+            requests[cache.cache_path(params)] = params
+    cost = sum(client.metadata.get_cost(**p) for path, p in requests.items() if not path.exists())
     print(f"{len(rolls)} rolls, estimated cost of uncached requests: ${cost:.2f}")
     if not args.download:
         print("Nothing downloaded. Re-run with --download to fetch.")
         return
 
     fetch = lambda symbols, start, end: fetch_bbo_1m(symbols, start, end, client)
-    out_dir = OUTPUTS
+    out_dir, early_share = OUTPUTS, None
     if args.control_offset != CONTROL_OFFSET_WEEKS:
         out_dir = OUTPUTS / f"control_offset_{args.control_offset}"
-    results = run(rolls, fetch, load_rates(), out_dir)
+        early_share = early_drop_share(plan, {r.expiry: roll_spreads(r, fetch) for r in plan})
+    results = run(rolls, fetch, load_rates(), out_dir, early_share)
     print(f"\nWrote {out_dir}")
     print(f"Pre-2017-06 drop share (decision 10): {results['early_drop_share']:.1%}")
     print(f"\nWindows with an FOMC or ECB decision (decision 7):\n{results['meetings']}")

@@ -102,7 +102,24 @@ def test_roll_with_a_policy_decision_drops_from_the_no_meetings_stats(monkeypatc
     assert h1(results)["n"] == 8
     assert h1(results, spec="no_meetings")["n"] == 7
     overlap = pd.read_csv(tmp_path / "meetings.csv", index_col=["split", "bank"])
-    assert overlap.loc[("exploratory", "ecb")].to_dict() == {"roll": 1, "control": 0, "rolls": 8}
+    assert overlap.loc[("exploratory", "ecb")].to_dict() == {"roll": 1, "control": 0, "roll_or_control": 1, "rolls": 8}
+
+
+def test_meeting_counts_leave_out_rolls_without_both_changes(monkeypatch, tmp_path):
+    rolls = select_windows(config.exploratory(roll_calendar(2024, 2026)))
+    first, second = rolls[0], rolls[1]
+    monkeypatch.setitem(meetings.BANKS, "ecb", (first.roll.days[3], second.roll.days[3]))
+    monkeypatch.setitem(meetings.BANKS, "fomc", ())
+    # The second roll has no control-window quotes, so no control change.
+    no_quotes = set(second.control.days) | {second.control.baseline}
+    fetch = fake_fetch(lambda day: 50 + day.toordinal() % 3, has_data=lambda day: day not in no_quotes)
+    results = run(rolls, fetch, fake_rates(), tmp_path)
+
+    assert h1(results)["n"] == 7
+    assert h1(results, spec="no_meetings")["n"] == 6
+    assert results["meetings"].loc[("exploratory", "ecb")].to_dict() == {
+        "roll": 1, "control": 0, "roll_or_control": 1, "rolls": 7,
+    }
 
 
 def test_rate_move_is_taken_out_of_the_carry_comparison(tmp_path):
@@ -157,18 +174,30 @@ def test_control_offset_moves_the_control_window_and_the_output_folder(monkeypat
     client = SimpleNamespace(metadata=SimpleNamespace(get_cost=lambda **params: 0.0))
     monkeypatch.setattr(analyze, "get_client", lambda: client)
     monkeypatch.setattr(analyze, "load_rates", fake_rates)
+    quotes = fake_fetch(lambda day: 50)
+    monkeypatch.setattr(analyze, "fetch_bbo_1m", lambda symbols, start, end, client: quotes(symbols, start, end))
     calls = []
 
     class Stop(Exception):
         pass
 
-    def capture(rolls, fetch, rates, out_dir):
-        calls.append((rolls, out_dir))
+    def capture(rolls, fetch, rates, out_dir, early_share):
+        calls.append((rolls, out_dir, early_share))
         raise Stop
 
     monkeypatch.setattr(analyze, "run", capture)
     with pytest.raises(Stop):
-        analyze.main(["--download", "--control-offset", "2"])
-    rolls, out_dir = calls[0]
+        analyze.main(["--all", "--download", "--control-offset", "2"])
+    rolls, out_dir, early_share = calls[0]
     assert out_dir == analyze.OUTPUTS / "control_offset_2"
     assert all(r.control == control_window(r.expiry, 2) for r in rolls)
+    # Decision 10 is judged on the plan's windows, passed in rather than
+    # recomputed from the moved control windows.
+    assert early_share == 0
+
+
+def test_given_drop_share_decides_the_main_test_sample(tmp_path):
+    rolls = select_windows(config.main_test(roll_calendar(2010, 2024)))
+    results = run(rolls, fake_fetch(lambda day: 50 + day.toordinal() % 3), fake_rates(), tmp_path, early_share=0.5)
+    assert results["early_drop_share"] == 0.5
+    assert h1(results, split="main_test")["n"] == 30

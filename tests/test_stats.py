@@ -213,13 +213,24 @@ def test_summarize_reports_both_planned_intervals():
         assert out.loc[row, "lag1_autocorr"] == pytest.approx(np.corrcoef(x[:-1], x[1:])[0, 1])
 
 
-def test_summarize_leaves_the_block_interval_empty_below_one_block():
-    # A subset can have fewer rolls than one block, e.g. the exploratory
-    # rolls without a Fed or ECB decision (decision 7).
-    out = summarize(changes([1.0, -2.0, 3.0], [0.0, 0.5, -1.0]))  # d = 1, 1.5, 2
-    assert (out.loc["h1", "n"], out.loc["h1", "mean"]) == (3, 1.5)
+@pytest.mark.parametrize("n", [3, 4, 7])
+def test_summarize_leaves_the_block_interval_empty_below_two_blocks(n):
+    # A subset can be small, e.g. the exploratory rolls without a Fed or ECB
+    # decision (decision 7). With n = 4 every resample would be a rotation
+    # of the same four rolls, giving a zero-width interval.
+    rng = np.random.default_rng(n)
+    out = summarize(changes(ticks(rng.normal(0, 3, n)), ticks(rng.normal(0, 3, n))))
+    assert out.loc["h1", "n"] == n
     assert out.loc["h1", ["ci_low", "ci_high"]].notna().all()
     assert out.loc["h1", ["block_ci_low", "block_ci_high"]].isna().all()
+
+
+def test_summarize_reports_the_block_interval_from_two_blocks():
+    # The 8 exploratory rolls are exactly two blocks.
+    rng = np.random.default_rng(8)
+    out = summarize(changes(ticks(rng.normal(0, 3, 8)), ticks(rng.normal(0, 3, 8))))
+    low, high = out.loc["h1", ["block_ci_low", "block_ci_high"]]
+    assert low < high
 
 
 def test_summarize_counts_rises_falls_and_zeros():
