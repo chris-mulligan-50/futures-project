@@ -1,0 +1,7 @@
+split,bank,roll,control,roll_or_control,rolls
+main_test,fomc,13,1,14,57
+main_test,ecb,21,0,21,57
+main_test,fomc_or_ecb,29,1,30,57
+exploratory,fomc,1,0,1,8
+exploratory,ecb,4,0,4,8
+exploratory,fomc_or_ecb,5,0,5,8

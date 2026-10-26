@@ -1,0 +1,40 @@
+expiry,window,day,reason
+2010-09-13,roll,2010-09-06,holiday
+2010-12-13,control,2010-11-25,holiday
+2011-03-14,control,2011-02-21,holiday
+2011-12-19,control,2011-11-24,holiday
+2012-06-18,control,2012-05-28,holiday
+2012-12-17,control,2012-11-22,holiday
+2013-06-17,control,2013-05-27,holiday
+2013-12-16,control,2013-11-28,holiday
+2014-06-16,roll,2014-06-12,"front stale, deferred stale"
+2014-06-16,roll,2014-06-13,"front stale, deferred stale"
+2014-06-16,control,2014-05-26,holiday
+2014-12-15,control,2014-11-27,holiday
+2015-06-15,control,2015-05-25,holiday
+2015-09-14,roll,2015-09-07,holiday
+2015-12-14,control,2015-11-26,holiday
+2016-12-19,control,2016-11-24,holiday
+2017-03-13,control,2017-02-20,holiday
+2017-06-19,control,2017-05-29,holiday
+2017-12-18,control,2017-11-23,holiday
+2018-06-18,control,2018-05-28,holiday
+2018-12-17,control,2018-11-22,holiday
+2019-03-18,control,2019-02-20,deferred stale
+2019-06-17,control,2019-05-27,holiday
+2019-12-16,control,2019-11-28,holiday
+2020-06-15,control,2020-05-25,holiday
+2020-09-14,roll,2020-09-07,holiday
+2020-12-14,control,2020-11-26,holiday
+2021-09-13,roll,2021-09-06,holiday
+2021-12-13,control,2021-11-25,holiday
+2022-03-14,control,2022-02-21,holiday
+2022-12-19,control,2022-11-24,holiday
+2023-03-13,control,2023-02-20,holiday
+2023-12-18,control,2023-11-23,holiday
+2024-06-17,control,2024-05-27,holiday
+2024-12-16,control,2024-11-28,holiday
+2025-06-16,control,2025-05-26,holiday
+2025-12-15,control,2025-11-27,holiday
+2026-06-15,control,2026-05-25,holiday
+2026-09-14,roll,2026-09-07,holiday
