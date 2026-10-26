@@ -7,16 +7,21 @@ tests (``stats.py``, decision 9) on the main-test and exploratory rolls
 separately (decision 10). Writes to ``outputs/``:
 
 * ``roll_vs_control.csv``: one row per roll, both changes in ticks, the
-  days used and the widest quote on them.
+  days used, the widest quote on them and any Fed or ECB decision between
+  them (``meetings.py``, decision 7).
 * ``carry.csv``: implied and observed rate-gap changes per window, in
   basis points (``carry.py``, decision 8).
 * ``dropped_days.csv``: every dropped snapshot day and its reason (#24).
+* ``meetings.csv``: per split, how many roll and control windows contain
+  an FOMC or ECB decision (decision 7's overlap table).
 * ``stats.csv``: ``stats.summarize`` for each split (``main_test``,
   ``exploratory``) and specification:
 
   - ``spread``: the main test, changes in ticks.
   - ``narrow_quotes``: without rolls where either leg is quoted wider than
     5 ticks on a day a change uses (decision 11's sensitivity check).
+  - ``no_meetings``: without rolls where either window contains an FOMC or
+    ECB decision (decision 7's sensitivity check).
   - ``carry_3m``: implied minus observed 3-month gap change, in basis
     points (decision 8, main comparison).
   - ``carry_forward``: the same against the forward gap (sensitivity).
@@ -53,6 +58,7 @@ from euro_roll.changes import KINDS, change_table, needed_days, roll_changes
 from euro_roll.client import get_client
 from euro_roll.download import fetch_bbo_1m, request_params
 from euro_roll.expiries import roll_calendar
+from euro_roll.meetings import meeting_table, overlap
 from euro_roll.rates import load_rates
 from euro_roll.spread import daily_spreads, session_open, snapshot_time
 from euro_roll.stats import summarize
@@ -165,13 +171,17 @@ def run(rolls: List[RollWindows], fetch: Fetch, rates: pd.DataFrame, out_dir=OUT
     spreads = {roll.expiry: roll_spreads(roll, fetch) for roll in rolls}
     share = early_drop_share(rolls, spreads)
     changes = change_table(roll_changes(roll, spreads[roll.expiry]) for roll in rolls)
+    decisions = meeting_table(changes)
+    changes = changes.join(decisions)
     carry = carry_table(rolls, spreads, changes, rates)
     dropped = dropped_log(spreads)
 
     narrow = (changes[[f"{kind}_max_width" for kind in KINDS]] <= MAX_WIDTH_TICKS).all(axis=1)
+    calm = decisions.isna().all(axis=1)
     specs = {
         "spread": changes,
         "narrow_quotes": changes[narrow],
+        "no_meetings": changes[calm],
         "carry_3m": excess(carry, "spot"),
         "carry_forward": excess(carry, "forward"),
     }
@@ -188,16 +198,23 @@ def run(rolls: List[RollWindows], fetch: Fetch, rates: pd.DataFrame, out_dir=OUT
             if len(subset):
                 stats[(split, spec)] = summarize(subset)
     stats = pd.concat(stats, names=["split", "spec", "test"])
+    # Over the rolls the tests use: both changes present.
+    tested = changes[["roll", "control"]].notna().all(axis=1)
+    overlaps = pd.concat(
+        {split: overlap(decisions[tested & decisions.index.isin(expiries)]) for split, expiries in splits.items()},
+        names=["split", "bank"],
+    )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     changes.to_csv(out_dir / "roll_vs_control.csv")
     carry.to_csv(out_dir / "carry.csv")
     dropped.to_csv(out_dir / "dropped_days.csv", index=False)
+    overlaps.to_csv(out_dir / "meetings.csv")
     stats.to_csv(out_dir / "stats.csv")
     plot_roll_vs_control(changes, out_dir / "figures" / "roll_vs_control.png")
     return {
         "roll_vs_control": changes, "carry": carry, "dropped_days": dropped,
-        "stats": stats, "early_drop_share": share,
+        "meetings": overlaps, "stats": stats, "early_drop_share": share,
     }
 
 
@@ -231,6 +248,7 @@ def main(argv=None):
     results = run(rolls, fetch, load_rates())
     print(f"\nWrote {OUTPUTS}")
     print(f"Pre-2017-06 drop share (decision 10): {results['early_drop_share']:.1%}")
+    print(f"\nWindows with an FOMC or ECB decision (decision 7):\n{results['meetings']}")
     h1 = results["stats"].xs("h1", level="test")
     columns = ["n", "n_positive", "mean", "ci_low", "ci_high", "sign_p", "wilcoxon_p"]
     with pd.option_context("display.width", 120, "display.float_format", "{:.3f}".format):

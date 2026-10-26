@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from euro_roll import analyze, cache, config
+from euro_roll import analyze, cache, config, meetings
 from euro_roll.analyze import quote_range, run
 from euro_roll.expiries import roll_calendar
 from euro_roll.spread import TICK, session_open, snapshot_time
@@ -89,6 +89,20 @@ def test_wide_quote_on_a_day_used_drops_the_roll_from_the_narrow_stats(tmp_path)
     assert results["roll_vs_control"]["control_max_width"].tolist() == [8] + [1] * 7
     assert h1(results)["n"] == 8
     assert h1(results, spec="narrow_quotes")["n"] == 7
+
+
+def test_roll_with_a_policy_decision_drops_from_the_no_meetings_stats(monkeypatch, tmp_path):
+    rolls = select_windows(config.exploratory(roll_calendar(2024, 2026)))
+    decision_day = rolls[0].roll.days[3]  # Thursday of the first roll window
+    monkeypatch.setitem(meetings.BANKS, "ecb", (decision_day,))
+    monkeypatch.setitem(meetings.BANKS, "fomc", ())
+    results = run(rolls, fake_fetch(lambda day: 50 + day.toordinal() % 3), fake_rates(), tmp_path)
+
+    assert results["roll_vs_control"]["roll_ecb"].tolist() == [decision_day] + [None] * 7
+    assert h1(results)["n"] == 8
+    assert h1(results, spec="no_meetings")["n"] == 7
+    overlap = pd.read_csv(tmp_path / "meetings.csv", index_col=["split", "bank"])
+    assert overlap.loc[("exploratory", "ecb")].to_dict() == {"roll": 1, "control": 0, "rolls": 8}
 
 
 def test_rate_move_is_taken_out_of_the_carry_comparison(tmp_path):
