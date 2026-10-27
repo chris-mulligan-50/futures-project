@@ -107,6 +107,15 @@ PYTHONPATH=src python -m euro_roll.power                     # reads outputs/, n
 python -m pytest                                             # no key or network needed
 ```
 
+On Windows PowerShell, set the key and the path once, then drop the
+`PYTHONPATH=src` prefix from the commands:
+
+```powershell
+$env:DATABENTO_API_KEY="your-key"
+$env:PYTHONPATH="src"
+python -m euro_roll.analyze --all
+```
+
 Other results cited above:
 
 ```bash
