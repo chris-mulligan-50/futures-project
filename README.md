@@ -3,6 +3,9 @@ FINM 37000 — Futures and Related Derivatives
 
 **Do Euro FX calendar spreads move more in quarterly roll weeks than in comparable normal weeks?**
 
+H1: the spread moves more in roll weeks than in control weeks. H2: it moves
+in a consistent direction.
+
 ## Result
 
 We found **no evidence of a roll-week effect**. On the 57 held-out rolls
@@ -24,8 +27,9 @@ computed because H1 and H2 do not hold.
 The result survives every sensitivity check in the plan: dropping rolls with
 wide quotes (34 rolls), dropping rolls with a Fed or ECB decision in either
 window (27 rolls), and two carry adjustments using observed USD and EUR
-rates. The 8 recent rolls, where the idea came from, are exploratory and also
-show nothing (−0.88, interval −2.44 to +0.38). Full output is in
+rates. The 8 recent rolls, where the idea came from, are exploratory and
+show no increase either (−0.88, interval −2.44 to +0.38). Full output,
+with block bootstrap intervals, is in
 [outputs/stats.csv](outputs/stats.csv).
 
 **This is weaker than "no effect".** The control week sits about five weeks
@@ -40,7 +44,8 @@ control's is detected only 29 to 43% of the time, and a move twice as large
 
 - **Rolling is concentrated.** In the 8 recent rolls, 80 to 87% of the listed
   calendar spread's volume trades in the roll week and 0 to 1% in the control
-  week. Outright volume crosses over later, 3 days before expiry in 63 of 65
+  week ([notebooks/roll_spread_volume.ipynb](notebooks/roll_spread_volume.ipynb)).
+  Outright volume crosses over later, 3 days before expiry in 63 of 65
   rolls, about two days after spread trading peaks.
 - **Central-bank meetings line up with rolls.** A Fed or ECB decision falls
   inside 29 of 57 roll windows but only 1 control window
@@ -78,10 +83,10 @@ deadline; the deviation log records this.
 - Calendar spreads mostly reflect the USD–EUR interest-rate gap, and we
   cannot show who pays for rolling or that rolling caused any move.
 - Two checks were added after the plan and are labelled as such: control
-  weeks 2 and 3 weeks out, and the power simulation. At 3 weeks the
-  percentile interval includes zero (−0.21 to +2.78) while the block
-  bootstrap interval just excludes it (+0.04 to +2.46), so we treat that
-  check as inconclusive.
+  weeks 2 and 3 weeks out, and the power simulation. At 2 weeks H1 is +0.12
+  (−1.31 to +1.68). At 3 weeks it is +1.17: the percentile interval includes
+  zero (−0.21 to +2.78) while the block bootstrap interval just excludes it
+  (+0.04 to +2.46), so we treat that check as inconclusive.
 - A reversal check before expiry, other currencies, and CFTC positioning were
   cut for time.
 
@@ -100,6 +105,14 @@ PYTHONPATH=src python -m euro_roll.analyze --all             # cost preview only
 PYTHONPATH=src python -m euro_roll.analyze --all --download  # runs the test, writes outputs/
 PYTHONPATH=src python -m euro_roll.power                     # reads outputs/, no download
 python -m pytest                                             # no key or network needed
+```
+
+Other results cited above:
+
+```bash
+PYTHONPATH=src python -m euro_roll.analyze --all --download --control-offset 2  # also 3
+PYTHONPATH=src python -m euro_roll.liquidity --all --download  # control_liquidity.csv
+PYTHONPATH=src python -m euro_roll.volume_share                # outright volume crossover
 ```
 
 The first download takes about 45 minutes. Requests are cached under
